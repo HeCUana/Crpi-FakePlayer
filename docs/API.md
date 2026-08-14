@@ -161,7 +161,57 @@ for (ContainerScanResult r : results) {
 `ItemStackInfo`：`itemId()`（Identifier）+ `count()`。
 扫描为**只读**：不开箱、不加载区块、不修改世界。半径自动钳制到 `maxContainerScanRadius`。
 
-## 6. 扩展自定义 Action
+## 6. Control API（0.2.0 新增）
+
+完整签名与语义（挂在 `FakePlayerHandle.control()` 或 `FakePlayerActions.of(bot)` 上）：
+
+| 方法 | 返回 | 说明 |
+|---|---|---|
+| `moveTo(BlockPos, double speed)` | `ActionResult` | 移动到方块；`PASS`=进行中，`SUCCESS`=到达（误差 0.5），`FAIL`=障碍/超时/卡住 |
+| `moveToPath(List<BlockPos>, double)` | `ActionResult` | 按路径点顺序移动 |
+| `lookAt(BlockPos)` / `lookAt(Entity)` | `ActionResult` | 2 tick 平滑转向目标中心 |
+| `sneak(boolean)` / `sprint(boolean)` | `ActionResult` | 潜行/冲刺（原生状态） |
+| `jump()` | `ActionResult` | 原生跳跃 |
+| `teleportTo(BlockPos)` | `ActionResult` | 安全传送（落点：脚下有方块、上下无遮挡；清空移动任务；先下坐骑） |
+| `getHeldItem(Hand)` | `ItemStackSnapshot` | 不可变快照（itemId + count） |
+| `swapHands()` | `ActionResult` | 主副手交换 |
+| `setHeldItem(Hand, ItemStack)` | `ActionResult` | 设置手部物品（copy 隔离） |
+| `interactBlock(BlockPos, Direction, Hand)` | `ActionResult` | 全参数方块交互（距离校验 + 原生 interactBlock） |
+| `mount(Entity)` / `dismount()` | `ActionResult` | 骑乘 / 下坐骑（原生 startRiding/stopRiding） |
+| `startRiding(Entity, boolean)` | `ActionResult` | mount 的别名 |
+| `giveItem(ItemStack)` | `ActionResult` | 原生堆叠插入（优先同类堆叠→空槽，不覆盖） |
+| `setHealth(double)` | `ActionResult` | 按 `getMaxHealth()` 校验 |
+| `setFoodLevel(int)` | `ActionResult` | 0~20，满饥饿补满饱和 |
+| `addExperience(int)` | `ActionResult` | 原生经验系统 |
+| `executeCommand(String)` | `ActionResult` | **以假人身份**执行命令（`parseAndExecute` + 假人 CommandSource） |
+| `playSound(SoundEvent)` | `ActionResult` | 播放声音 |
+| `setGameMode(GameMode)` | `ActionResult` | 切换游戏模式 |
+| `sendChatMessage(String)` | `ActionResult` | 以假人名义广播聊天 |
+| `getContainerInfo()` | `ContainerInfo` | 当前打开容器快照（无容器返回 null） |
+| `pathfindTo(BlockPos, double)` | `ActionResult` | **直线移动版**；真实寻路（避障）TODO |
+| `getNearbyContainers(double radius)` | `List<ContainerInfo>` | 环境感知：只读扫描（复用 ContainerScanner，自动钳制 `maxContainerScanRadius`） |
+
+`ContainerInfo`：`pos / blockId / canOpen / items(List<ItemStackSnapshot>)`。
+`ItemStackSnapshot`：`itemId(Identifier) / count(int)`，不可变，修改不影响假人背包。
+
+```java
+FakePlayerHandle bot = FakePlayerAdapter.resolve(server, "builder1");
+
+bot.control().lookAt(chestPos);
+bot.control().moveTo(chestPos, 4.3);
+List<ContainerInfo> nearby = bot.control().getNearbyContainers(8);
+for (ContainerInfo c : nearby) {
+    System.out.println(c.pos() + " " + c.blockId() + " canOpen=" + c.canOpen());
+}
+```
+
+### 任务机制与限制
+
+- 持续任务（move/look/path）由 `ControlManager` 每 tick 驱动（Carpet `onTick`）；同一假人单任务模型，新任务自动取消旧任务
+- 移动为每 tick 位置步进 + 原版 `blocksMovement()` 碰撞检测（障碍 FAIL）、20 tick 卡住检测、600 tick 超时
+- **已知限制**：Carpet 假人不按 velocity 移动（1.21.11 实测），移动因此不走原版速度机制；`pathfindTo` 无避障
+
+## 7. 扩展自定义 Action
 
 ```java
 // 1. 定义动作
@@ -197,7 +247,7 @@ CRPIFakePlayerMod.dispatcher().register(ActionType.USE_ITEM, new MyExecutor());
 
 注意：`ActionType` 为固定枚举，自定义逻辑复用现有类型并注册覆盖执行器（会替换该类型的默认执行器），或用独立分支判断。**不推荐**通过 Mixin 修改枚举。
 
-## 7. FakePlayerHandle 可用能力
+## 8. FakePlayerHandle 可用能力
 
 ```java
 player()                 // ServerPlayerEntity（原生实体）
@@ -211,7 +261,7 @@ yaw()/pitch()            // 朝向
 isOnline()               // 未移除
 ```
 
-## 8. Carpet 规则联动
+## 9. Carpet 规则联动
 
 | 规则 | 影响 |
 |---|---|
@@ -221,7 +271,7 @@ isOnline()               // 未移除
 
 规则运行时可改（`/crpi-fakeplayer <规则> <值>`），无需重启。
 
-## 9. 线程与安全约束
+## 10. 线程与安全约束
 
 - **所有 API 只能在服务器主线程调用**（命令、ServerTick 事件、其它服务端逻辑内）。不要在异步线程调用（会抛 `Attempted to run on a non-existent server thread` 或世界状态不一致）
 - 动作校验内置：目标存活/同世界/距离/区块已加载/规则开关

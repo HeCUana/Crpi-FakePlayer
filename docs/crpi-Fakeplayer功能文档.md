@@ -126,6 +126,21 @@ Found 3 containers.
 
 ---
 
+### 3.7 移动 / 视角 / 状态（0.2.0 Control 命令）
+
+```
+/crpi fp move <玩家> <坐标> [速度]        移动到目标（速度默认 4.3 格/秒）
+/crpi fp lookat <玩家> <坐标>             平滑转向目标（2 tick）
+/crpi fp jump <玩家>                      跳跃
+/crpi fp teleport <玩家> <坐标>           安全传送（校验落点：脚下有方块、上下无遮挡）
+/crpi fp sneak <玩家> [off]               潜行开关
+/crpi fp sprint <玩家> [off]              冲刺开关
+/crpi fp swap <玩家>                      交换主副手
+/crpi fp exec <玩家> <命令>               以假人身份执行命令
+```
+
+移动特性：每 tick 步进（无阻塞、无新线程）、碰撞检测（障碍 → FAIL）、卡住检测（20 tick 无位移 → FAIL）、超时 600 tick；`moveTo` 返回 `PASS`（进行中）→ `SUCCESS`（到达，误差 0.5 格）。
+
 ## 4. Action API（供其它 Mod 调用）
 
 ```java
@@ -163,6 +178,61 @@ ActionResult r9 = FakePlayerActions.of(bot).drop(Hand.MAIN_HAND, false).execute(
 
 `ActionResult` 枚举：`SUCCESS / PASS / FAIL / RETRY / SKIP / ABORT / INVALID_TARGET / OUT_OF_RANGE / NO_PERMISSION / INVALID_STATE`。
 Stateful 动作（DIG / USE_RELEASE）`execute()` 返回 `PASS` 表示已开始（状态 `RUNNING`），完成后由框架置为 `SUCCESS/FAILED`。
+
+### 4.1 Control API（0.2.0，完整签名）
+
+```java
+import com.crpi.fakeplayer.control.FakePlayerControl;
+import com.crpi.fakeplayer.control.ContainerInfo;
+import com.crpi.fakeplayer.control.ItemStackSnapshot;
+
+FakePlayerControl ctl = bot.control();
+
+// 移动 / 视角（持续任务，tick 驱动，PASS=进行中 SUCCESS=完成 FAIL=失败）
+ActionResult r1 = ctl.moveTo(pos, 4.3);
+ActionResult r2 = ctl.moveToPath(List.of(p1, p2, p3), 4.3);
+ActionResult r3 = ctl.lookAt(pos);          // 或 lookAt(entity)
+ActionResult r4 = ctl.pathfindTo(pos, 4.3); // 直线版，寻路 TODO
+
+// 状态
+ActionResult r5 = ctl.sneak(true);
+ActionResult r6 = ctl.sprint(true);
+ActionResult r7 = ctl.jump();
+ActionResult r8 = ctl.teleportTo(pos);      // 安全落点校验
+ActionResult r9 = ctl.setGameMode(GameMode.SURVIVAL);
+ActionResult r10 = ctl.setHealth(20.0);    // 按最大生命值校验
+ActionResult r11 = ctl.setFoodLevel(20);
+ActionResult r12 = ctl.addExperience(10);
+
+// 背包 / 物品（快照不可变；giveItem 原生堆叠不覆盖）
+ItemStackSnapshot snap = ctl.getHeldItem(Hand.MAIN_HAND);
+ActionResult r13 = ctl.swapHands();
+ActionResult r14 = ctl.setHeldItem(Hand.MAIN_HAND, stack);
+ActionResult r15 = ctl.giveItem(stack);
+
+// 骑乘 / 交互
+ActionResult r16 = ctl.mount(vehicle);
+ActionResult r17 = ctl.dismount();
+ActionResult r18 = ctl.interactBlock(pos, Direction.UP, Hand.MAIN_HAND);
+
+// 命令 / 表现（以假人身份）
+ActionResult r19 = ctl.executeCommand("say hello");
+ActionResult r20 = ctl.sendChatMessage("hi");
+ActionResult r21 = ctl.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP);
+
+// 环境感知（只读）
+ContainerInfo info = ctl.getContainerInfo();
+List<ContainerInfo> nearby = ctl.getNearbyContainers(8);
+```
+
+`ContainerInfo`：`pos / blockId / canOpen / items(List<ItemStackSnapshot>)`；`ItemStackSnapshot`：`itemId(Identifier) / count(int)`。
+
+### 4.2 控制任务机制
+
+- 移动/视角任务由 `ControlManager` 每 tick 驱动（Carpet `onTick`），无阻塞、无新线程
+- 同一假人同时只有一个控制任务；新任务自动取消旧任务；`teleportTo` 会清空移动任务
+- 移动：每 tick 位置步进 + `blocksMovement()` 碰撞检测（障碍 FAIL）+ 卡住检测（20 tick）+ 超时（600 tick）
+- 说明：Carpet 假人不按 velocity 移动（1.21.11 实测），因此采用每 tick 位置步进而非原版速度机制；碰撞判定仍走原版 `blocksMovement()`
 
 ---
 
@@ -258,4 +328,5 @@ com.crpi.fakeplayer/
 | V0.2 | DIG（MiningSession）/ USE / INTERACT_ENTITY | ✅ 已实测 |
 | V0.3 | 容器操作：GUI_CLICK / ContainerContext / ContainerManager | ✅ 已实测 |
 | V0.4 | Stateful：USE_RELEASE / ItemUseSession | ✅ 已实测 |
-| 未来 | ActionSequence、Replay/TAS 桥接、AI、Litematica Bridge | 规划中 |
+| 0.2.0 | Control API：移动 / 视角 / 状态 / 背包 / 骑乘 / 命令 / 环境感知 | ✅ 已实测 |
+| 未来 | ActionSequence、寻路（pathfind 避障）、Replay/TAS 桥接、AI、Litematica Bridge | 规划中 |
