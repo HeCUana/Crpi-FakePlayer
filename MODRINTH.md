@@ -17,7 +17,26 @@
 | `USE_RELEASE` | Hold-and-release item use: bow draw (20 ticks = full power), eating, shield blocking |
 | `CONTAINER_SCAN` | Read-only scan of containers in a radius (no GUI opened, no chunks loaded, locked-container and distance aware) |
 
-Plus a full framework for other mods: `Action` / `ActionDispatcher` / `ActionScheduler` (tick-driven, no extra threads) / per-player queues, and a fluent `FakePlayerActions` API.
+Plus a full framework for other mods: `Action` / `ActionDispatcher` / `ActionScheduler` (tick-driven, no extra threads) / per-player queues, a fluent `FakePlayerActions` API, and a **Control API** (0.2.0) for movement, looking, state, inventory, riding, commands and environment sensing:
+
+```java
+FakePlayerControl ctl = bot.control();
+ctl.moveTo(pos, 4.3);                       // tick-driven movement with collision checks
+ctl.moveToPath(waypoints, 4.3);
+ctl.lookAt(chestPos);                       // smooth 2-tick turn
+ctl.sneak(true); ctl.sprint(true); ctl.jump();
+ctl.teleportTo(pos);                        // safe landing validation
+ctl.getHeldItem(Hand.MAIN_HAND);            // immutable snapshot
+ctl.swapHands(); ctl.setHeldItem(Hand.MAIN_HAND, stack);
+ctl.giveItem(stack);                        // native stacking, no overwrite
+ctl.setHealth(20.0); ctl.setFoodLevel(20); ctl.addExperience(10);
+ctl.mount(vehicle); ctl.dismount();
+ctl.interactBlock(pos, Direction.UP, Hand.MAIN_HAND);
+ctl.executeCommand("say hello");            // runs AS the fake player
+ctl.setGameMode(GameMode.SURVIVAL); ctl.playSound(sound); ctl.sendChatMessage("hi");
+ctl.getContainerInfo();
+ctl.getNearbyContainers(8);                 // read-only environment sensing
+```
 
 ## Why CRPI-FakePlayer
 
