@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+
+# Dev run server (test world, configs)
+run/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+out/
+
+# OS
+Thumbs.db
+.DS_Store

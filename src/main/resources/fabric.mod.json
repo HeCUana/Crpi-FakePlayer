@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "crpi-fakeplayer",
+  "version": "${version}",
+  "name": "CRPI-FakePlayer",
+  "description": "Server-side action framework for Carpet fake players: attack, dig, use, container and item-use actions through vanilla player APIs.",
+  "authors": [
+    "CRPI"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.crpi.fakeplayer.CRPIFakePlayerMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "1.21.11",
+    "carpet": ">=1.4.193"
+  }
+}

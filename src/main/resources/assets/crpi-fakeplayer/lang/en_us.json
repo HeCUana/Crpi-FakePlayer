@@ -1,0 +1,23 @@
+{
+  "crpi-fakeplayer.rule.fakePlayerActions.name": "Fake Player Actions",
+  "crpi-fakeplayer.rule.fakePlayerActions.desc": "Master switch: enables the /crpi fp command and the Action framework.",
+  "crpi-fakeplayer.rule.fakePlayerMining.name": "Fake Player Mining",
+  "crpi-fakeplayer.rule.fakePlayerMining.desc": "Allows DIG actions (block mining).",
+  "crpi-fakeplayer.rule.fakePlayerInteraction.name": "Fake Player Interaction",
+  "crpi-fakeplayer.rule.fakePlayerInteraction.desc": "Allows USE / INTERACT_ENTITY actions.",
+  "crpi-fakeplayer.rule.fakePlayerContainer.name": "Fake Player Container",
+  "crpi-fakeplayer.rule.fakePlayerContainer.desc": "Allows GUI_CLICK and other container actions.",
+  "crpi-fakeplayer.rule.fakePlayerCombat.name": "Fake Player Combat",
+  "crpi-fakeplayer.rule.fakePlayerCombat.desc": "Allows ATTACK actions.",
+  "crpi-fakeplayer.rule.fakePlayerItemUse.name": "Fake Player Item Use",
+  "crpi-fakeplayer.rule.fakePlayerItemUse.desc": "Allows USE_ITEM / USE_RELEASE actions.",
+  "crpi-fakeplayer.rule.fakePlayerDebug.name": "Fake Player Debug Log",
+  "crpi-fakeplayer.rule.fakePlayerDebug.desc": "Logs every Action in detail when enabled.",
+  "crpi-fakeplayer.rule.maxQueueLength.name": "Max Queue Length",
+  "crpi-fakeplayer.rule.maxQueueLength.desc": "Maximum Action queue length per fake player.",
+  "crpi-fakeplayer.rule.maxConcurrentActions.name": "Max Concurrent Actions",
+  "crpi-fakeplayer.rule.maxConcurrentActions.desc": "Maximum concurrently running stateful Actions.",
+  "crpi-fakeplayer.rule.maxContainerScanRadius.name": "Max Container Scan Radius",
+  "crpi-fakeplayer.rule.maxContainerScanRadius.desc": "Maximum scan radius allowed by the scancontainers command.",
+  "crpi-fakeplayer.category.actions": "Fake Player Actions"
+}

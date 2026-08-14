@@ -1,0 +1,23 @@
+{
+  "crpi-fakeplayer.rule.fakePlayerActions.name": "假人行为框架",
+  "crpi-fakeplayer.rule.fakePlayerActions.desc": "总开关：启用 /crpi fp 命令与 Action 框架。",
+  "crpi-fakeplayer.rule.fakePlayerMining.name": "假人挖掘",
+  "crpi-fakeplayer.rule.fakePlayerMining.desc": "允许 DIG 动作（挖掘方块）。",
+  "crpi-fakeplayer.rule.fakePlayerInteraction.name": "假人方块交互",
+  "crpi-fakeplayer.rule.fakePlayerInteraction.desc": "允许 USE / INTERACT_ENTITY 动作。",
+  "crpi-fakeplayer.rule.fakePlayerContainer.name": "假人容器操作",
+  "crpi-fakeplayer.rule.fakePlayerContainer.desc": "允许 GUI_CLICK 等容器操作。",
+  "crpi-fakeplayer.rule.fakePlayerCombat.name": "假人战斗",
+  "crpi-fakeplayer.rule.fakePlayerCombat.desc": "允许 ATTACK 动作。",
+  "crpi-fakeplayer.rule.fakePlayerItemUse.name": "假人物品使用",
+  "crpi-fakeplayer.rule.fakePlayerItemUse.desc": "允许 USE_ITEM / USE_RELEASE 动作。",
+  "crpi-fakeplayer.rule.fakePlayerDebug.name": "假人调试日志",
+  "crpi-fakeplayer.rule.fakePlayerDebug.desc": "开启后输出每个 Action 的详细日志。",
+  "crpi-fakeplayer.rule.maxQueueLength.name": "队列长度上限",
+  "crpi-fakeplayer.rule.maxQueueLength.desc": "每个假人的 Action 队列最大长度。",
+  "crpi-fakeplayer.rule.maxConcurrentActions.name": "并发动作上限",
+  "crpi-fakeplayer.rule.maxConcurrentActions.desc": "同时运行中的 Stateful Action 数量上限。",
+  "crpi-fakeplayer.rule.maxContainerScanRadius.name": "容器扫描半径上限",
+  "crpi-fakeplayer.rule.maxContainerScanRadius.desc": "scancontainers 命令允许的最大扫描半径。",
+  "crpi-fakeplayer.category.actions": "假人行为"
+}
