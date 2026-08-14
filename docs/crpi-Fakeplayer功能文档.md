@@ -1,5 +1,7 @@
 # CRPI-FakePlayer 功能文档
 
+> 相关文档：[API 文档](API.md)（开发者调用指南） · [README](../README.md)（项目概览）
+
 > Carpt Fake Player 的服务端行为框架（Fabric + Carpet 附属 Mod）。通过统一的 Action API 驱动假人执行接近真实玩家的 Minecraft 行为。
 > **纯服务端，客户端无需安装，零 Mixin，零新线程。** 目标 Minecraft **1.21.11** / Carpet **1.4.194**。
 

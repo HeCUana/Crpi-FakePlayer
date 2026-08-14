@@ -9,8 +9,14 @@
 A server-side action framework for Carpet fake players (Fabric + Carpet extension). Drives fake players through a unified Action API that executes near-vanilla player behaviours — **pure server-side, no client installation, zero Mixins, zero extra threads**.
 
 - Minecraft **1.21.11** / Fabric Loader 0.19.x / Carpet **1.4.194**
-- Current version: **0.1.0** (V0.1–V0.4 complete)
+- Current version: **0.1.0** (V0.1–V0.4 feature set)
 
+
+## Important
+
+- **This mod only drives Carpet fake players** (spawned via /player <name> spawn). It is not a standalone NPC/bot framework and cannot control real players.
+- **Pure server-side**: every behaviour runs through vanilla player logic on the server. Clients do NOT need this mod, nor any client-side mod.
+- **The server must run Fabric + Carpet Mod** — this is a Carpet extension.
 ## Requirements
 
 | Dependency | Version |
