@@ -14,6 +14,7 @@ import com.crpi.fakeplayer.config.CRPIFakePlayerSettings;
 import com.crpi.fakeplayer.fakeplayer.FakePlayerAdapter;
 import com.crpi.fakeplayer.fakeplayer.FakePlayerHandle;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -138,6 +139,46 @@ public final class FakePlayerCommand {
             .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
                 .then(CommandManager.argument("radius", IntegerArgumentType.integer(1))
                     .executes(FakePlayerCommand::scanContainers))));
+
+        fp.then(CommandManager.literal("move")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("pos", BlockPosArgumentType.blockPos())
+                    .then(CommandManager.argument("speed", DoubleArgumentType.doubleArg(0.1, 20.0))
+                        .executes(FakePlayerCommand::moveTo))
+                    .executes(ctx -> moveTo(ctx, 4.3)))));
+
+        fp.then(CommandManager.literal("lookat")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("pos", BlockPosArgumentType.blockPos())
+                    .executes(FakePlayerCommand::lookAt))));
+
+        fp.then(CommandManager.literal("jump")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .executes(FakePlayerCommand::jump)));
+
+        fp.then(CommandManager.literal("teleport")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("pos", BlockPosArgumentType.blockPos())
+                    .executes(FakePlayerCommand::teleportTo))));
+
+        fp.then(CommandManager.literal("sneak")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.literal("off").executes(ctx -> sneak(ctx, false)))
+                .executes(ctx -> sneak(ctx, true))));
+
+        fp.then(CommandManager.literal("sprint")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.literal("off").executes(ctx -> sprint(ctx, false)))
+                .executes(ctx -> sprint(ctx, true))));
+
+        fp.then(CommandManager.literal("swap")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .executes(FakePlayerCommand::swap)));
+
+        fp.then(CommandManager.literal("exec")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("command", StringArgumentType.greedyString())
+                    .executes(FakePlayerCommand::exec))));
 
         fp.then(CommandManager.literal("gui")
             .then(CommandManager.literal("info")
@@ -326,6 +367,87 @@ public final class FakePlayerCommand {
             }
         }
         send(ctx, sb.toString());
+        return 1;
+    }
+
+    private static int moveTo(CommandContext<ServerCommandSource> ctx) {
+        return moveTo(ctx, DoubleArgumentType.getDouble(ctx, "speed"));
+    }
+
+    private static int moveTo(CommandContext<ServerCommandSource> ctx, double speed) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        ActionResult result = h.control().moveTo(BlockPosArgumentType.getBlockPos(ctx, "pos"), speed);
+        send(ctx, "[CRPI-FakePlayer] move " + h.name() + " : " + result);
+        return 1;
+    }
+
+    private static int lookAt(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        ActionResult result = h.control().lookAt(BlockPosArgumentType.getBlockPos(ctx, "pos"));
+        send(ctx, "[CRPI-FakePlayer] lookat " + h.name() + " : " + result);
+        return 1;
+    }
+
+    private static int jump(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        send(ctx, "[CRPI-FakePlayer] jump " + h.name() + " : " + h.control().jump());
+        return 1;
+    }
+
+    private static int teleportTo(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        ActionResult result = h.control().teleportTo(BlockPosArgumentType.getBlockPos(ctx, "pos"));
+        send(ctx, "[CRPI-FakePlayer] teleport " + h.name() + " : " + result);
+        return 1;
+    }
+
+    private static int sneak(CommandContext<ServerCommandSource> ctx, boolean on) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        send(ctx, "[CRPI-FakePlayer] sneak " + h.name() + "=" + on + " : " + h.control().sneak(on));
+        return 1;
+    }
+
+    private static int sprint(CommandContext<ServerCommandSource> ctx, boolean on) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        send(ctx, "[CRPI-FakePlayer] sprint " + h.name() + "=" + on + " : " + h.control().sprint(on));
+        return 1;
+    }
+
+    private static int swap(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        send(ctx, "[CRPI-FakePlayer] swap " + h.name() + " : " + h.control().swapHands());
+        return 1;
+    }
+
+    private static int exec(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        String command = StringArgumentType.getString(ctx, "command");
+        ActionResult result = h.control().executeCommand(command);
+        send(ctx, "[CRPI-FakePlayer] exec " + h.name() + " : " + result);
         return 1;
     }
 

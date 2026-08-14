@@ -70,4 +70,9 @@ public final class FakePlayerHandle {
     public boolean isOnline() {
         return !this.player.isRemoved();
     }
+
+    /** The control surface (movement, looking, inventory, commands, ...). */
+    public com.crpi.fakeplayer.control.FakePlayerControl control() {
+        return com.crpi.fakeplayer.control.ControlManager.of(this);
+    }
 }

@@ -9,7 +9,7 @@
 Carpet Fake Player 的服务端行为框架（Fabric + Carpet 附属 Mod）。通过统一的 Action API 驱动假人执行接近真实玩家的 Minecraft 行为。
 
 - Minecraft **1.21.11** / Fabric Loader 0.19.x / Carpet **1.4.194**
-- 当前版本：**0.1.0**（V0.1~V0.4 功能集）
+- 当前版本：**0.2.0**（V0.1~V0.4 功能集 + Control API）
 
 ## 重要
 
@@ -56,7 +56,7 @@ Carpet Fake Player 的服务端行为框架（Fabric + Carpet 附属 Mod）。�
 /crpi fp attack | drop | close | useitem | interact
 /crpi fp dig | use
 /crpi fp gui info | list | click | close
-/crpi fp userelease
+/crpi fp userelease | move | lookat | jump | teleport | sneak | sprint | swap | exec
 /crpi fp scancontainers
 ```
 
@@ -76,6 +76,31 @@ Carpet Fake Player 的服务端行为框架（Fabric + Carpet 附属 Mod）。�
 | `maxContainerScanRadius` | 16 | 容器扫描最大半径 |
 
 规则运行时可通过 `/crpi-fakeplayer <规则> <值>` 修改。
+
+## Control API（0.2.0 新增）
+
+移动、视角、状态、背包、骑乘、命令与环境感知，全部由服务器 tick 驱动（无阻塞、无新线程）：
+
+```java
+FakePlayerHandle bot = FakePlayerAdapter.resolve(server, "builder1");
+FakePlayerControl ctl = bot.control();
+
+ctl.teleportTo(pos);                       // 安全传送（校验落点）
+ctl.moveTo(pos, 4.3);                      // 移动（PASS=进行中，SUCCESS=到达）
+ctl.moveToPath(waypoints, 4.3);            // 路径点顺序移动
+ctl.lookAt(chestPos);                      // 平滑转向（2 tick）
+ctl.sneak(true); ctl.sprint(true); ctl.jump();
+ctl.getHeldItem(Hand.MAIN_HAND);           // 不可变物品快照
+ctl.swapHands(); ctl.setHeldItem(Hand.MAIN_HAND, stack);
+ctl.giveItem(stack);                       // 原生堆叠插入，不覆盖
+ctl.setHealth(20.0); ctl.setFoodLevel(20); ctl.addExperience(10);
+ctl.mount(vehicle); ctl.dismount();
+ctl.interactBlock(pos, Direction.UP, Hand.MAIN_HAND);
+ctl.executeCommand("say hello");           // 以假人身份执行命令
+ctl.setGameMode(GameMode.SURVIVAL); ctl.playSound(sound);
+ctl.sendChatMessage("hi"); ctl.getContainerInfo();
+ctl.getNearbyContainers(8);                // 环境感知（只读容器扫描）
+```
 
 ## Action API
 
