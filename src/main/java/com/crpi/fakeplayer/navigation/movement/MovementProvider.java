@@ -30,7 +30,44 @@ public final class MovementProvider {
         for (int[] d : DIAGONALS) {
             addDiagonal(world, from, d[0], d[1], movements);
         }
+        for (int[] d : TRAVERSE) {
+            addParkour(world, from, d[0], d[1], 1, movements);
+            addParkour(world, from, d[0], d[1], 2, movements);
+        }
         return movements;
+    }
+
+    private void addParkour(NavigationWorld world, PathNode from, int dx, int dz, int span, List<Movement> out) {
+        int x = from.x() + dx * span;
+        int z = from.z() + dz * span;
+        if (!targetLoaded(world, x, z)) {
+            return;
+        }
+        net.minecraft.util.math.BlockPos target = new net.minecraft.util.math.BlockPos(x, from.y(), z);
+        // other side standable at the same height
+        if (!world.canStandAt(target)) {
+            return;
+        }
+        // head space at take-off and above the gap
+        if (!world.isPassable(new net.minecraft.util.math.BlockPos(from.x(), from.y() + 2, from.z()))) {
+            return;
+        }
+        // the gap itself: every intermediate position must have an empty floor
+        // (that is what makes it a gap) but passable body space
+        for (int i = 1; i < span; i++) {
+            net.minecraft.util.math.BlockPos gapFeet = new net.minecraft.util.math.BlockPos(from.x() + dx * i, from.y(), from.z() + dz * i);
+            if (world.isSolid(gapFeet.down())) {
+                return; // not a gap
+            }
+            if (!world.isPassable(gapFeet) || !world.isPassable(gapFeet.up())) {
+                return;
+            }
+        }
+        // landing edge: the position right before the gap must be solid floor
+        if (!world.isSolid(new net.minecraft.util.math.BlockPos(from.x(), from.y() - 1, from.z()))) {
+            return;
+        }
+        out.add(new MovementParkour(from, new PathNode(x, from.y(), z, 0, 0, null, null), dx, dz, span));
     }
 
     private boolean targetLoaded(NavigationWorld world, int x, int z) {

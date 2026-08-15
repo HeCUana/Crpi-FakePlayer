@@ -50,6 +50,22 @@ public final class PathExecutor {
         return this.stuck;
     }
 
+    /**
+     * True when the world changed under the planned route: the current
+     * movement's target position is no longer standable.
+     */
+    public boolean isCurrentMovementBlocked() {
+        if (this.path == null || this.path.isFinished()) {
+            return false;
+        }
+        Movement current = this.path.currentMovement();
+        if (current == null) {
+            return false;
+        }
+        return !this.world.canStandAt(new net.minecraft.util.math.BlockPos(
+            current.target().x(), current.target().y(), current.target().z()));
+    }
+
     public long stuckTicks() {
         return this.stuckTicks;
     }

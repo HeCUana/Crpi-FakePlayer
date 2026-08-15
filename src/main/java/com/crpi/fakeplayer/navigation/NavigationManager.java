@@ -1,10 +1,13 @@
 package com.crpi.fakeplayer.navigation;
 
 import com.crpi.fakeplayer.fakeplayer.FakePlayerHandle;
+import com.crpi.fakeplayer.navigation.cost.CostModel;
+import com.crpi.fakeplayer.navigation.cost.Favoring;
 import com.crpi.fakeplayer.navigation.executor.PathExecutor;
 import com.crpi.fakeplayer.navigation.goal.Goal;
 import com.crpi.fakeplayer.navigation.goal.GoalBlock;
 import com.crpi.fakeplayer.navigation.goal.GoalNear;
+import com.crpi.fakeplayer.navigation.movement.Movement;
 import com.crpi.fakeplayer.navigation.movement.controller.FakePlayerMovementController;
 import com.crpi.fakeplayer.navigation.path.Path;
 import com.crpi.fakeplayer.navigation.path.PathNode;
@@ -35,13 +38,16 @@ public final class NavigationManager {
     private final NavigationWorld world;
     private final FakePlayerMovementController controller;
     private final PathExecutor executor;
-    private final AStarPathFinder pathFinder = new AStarPathFinder();
+    private final CostModel costModel = new CostModel();
+    private final Favoring favoring = new Favoring();
+    private final AStarPathFinder pathFinder = new AStarPathFinder(this.costModel, this.favoring);
 
     private NavigationProfile profile = NavigationProfile.NORMAL;
     private Goal goal;
     private NavigationStatus status = NavigationStatus.IDLE;
     private int repaths;
     private long lastRepathTick;
+    private boolean invalidated;
 
     public NavigationManager(FakePlayerHandle handle) {
         this.handle = handle;
@@ -60,6 +66,14 @@ public final class NavigationManager {
 
     public void setProfile(NavigationProfile profile) {
         this.profile = profile;
+    }
+
+    public CostModel costModel() {
+        return this.costModel;
+    }
+
+    public Favoring favoring() {
+        return this.favoring;
     }
 
     public Goal goal() {
@@ -159,8 +173,20 @@ public final class NavigationManager {
             this.status = NavigationStatus.FAILED;
             return;
         }
+        // the world changed under the planned path: re-plan with a penalty on
+        // the current position so a different route is chosen
+        if (!this.invalidated && this.executor.isCurrentMovementBlocked()) {
+            this.invalidated = true;
+            this.favoring.favor(this.handle.player().getBlockPos(), 1000.0);
+            LOGGER.info("navigation path invalidated player={} at={} favor size={}",
+                this.handle.name(), this.handle.player().getBlockPos(), this.favoring.size());
+            this.executor.stop();
+            this.repath();
+            return;
+        }
         if (this.executor.isStuck()) {
             this.status = NavigationStatus.STUCK;
+            this.favoring.favor(this.handle.player().getBlockPos(), 500.0);
             if (!this.repath()) {
                 this.status = NavigationStatus.FAILED;
             }
@@ -179,6 +205,8 @@ public final class NavigationManager {
         this.executor.stop();
         this.goal = newGoal;
         this.repaths = 0;
+        this.invalidated = false;
+        this.favoring.clear();
         BlockPos startPos = this.handle.player().getBlockPos();
         if (newGoal.isInGoal(startPos.getX(), startPos.getY(), startPos.getZ())) {
             // already at the goal

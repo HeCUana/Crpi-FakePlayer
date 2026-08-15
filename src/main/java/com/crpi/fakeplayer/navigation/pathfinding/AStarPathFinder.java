@@ -1,5 +1,7 @@
 package com.crpi.fakeplayer.navigation.pathfinding;
 
+import com.crpi.fakeplayer.navigation.cost.CostModel;
+import com.crpi.fakeplayer.navigation.cost.Favoring;
 import com.crpi.fakeplayer.navigation.goal.Goal;
 import com.crpi.fakeplayer.navigation.movement.Movement;
 import com.crpi.fakeplayer.navigation.movement.MovementProvider;
@@ -23,6 +25,13 @@ public final class AStarPathFinder {
     private final MovementProvider movementProvider = new MovementProvider();
     private final Map<Long, PathNode> bestNodes = new HashMap<>();
     private final Map<Long, Double> gCosts = new HashMap<>();
+    private final CostModel costModel;
+    private final Favoring favoring;
+
+    public AStarPathFinder(CostModel costModel, Favoring favoring) {
+        this.costModel = costModel;
+        this.favoring = favoring;
+    }
 
     /**
      * @param world       world view (synchronous in Phase 1)
@@ -87,7 +96,9 @@ public final class AStarPathFinder {
                     || Math.abs(target.z() - start.z()) > maxRadius) {
                     continue;
                 }
-                double tentativeG = current.gCost() + movement.cost();
+                double tentativeG = current.gCost() + movement.cost()
+                    + this.costModel.extraCost(world, new net.minecraft.util.math.BlockPos(target.x(), target.y(), target.z()))
+                    + this.favoring.favorFor(target);
                 Double knownG = this.gCosts.get(target.hash());
                 if (knownG != null && tentativeG >= knownG) {
                     continue;
