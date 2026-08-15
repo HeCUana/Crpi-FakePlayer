@@ -25,6 +25,7 @@ import com.crpi.fakeplayer.container.ContainerManager;
 import com.crpi.fakeplayer.container.ContainerScanResult;
 import com.crpi.fakeplayer.container.ContainerScanner;
 import com.crpi.fakeplayer.container.ItemStackInfo;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 import net.minecraft.command.argument.BlockPosArgumentType;
@@ -193,6 +194,16 @@ public final class FakePlayerCommand {
                 .then(CommandManager.argument("first", BlockPosArgumentType.blockPos())
                     .then(CommandManager.argument("second", BlockPosArgumentType.blockPos())
                         .executes(FakePlayerCommand::gotoAny)))));
+
+        fp.then(CommandManager.literal("follow")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("target", EntityArgumentType.entity())
+                    .executes(FakePlayerCommand::follow))));
+
+        fp.then(CommandManager.literal("followpath")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("waypoints", StringArgumentType.greedyString())
+                    .executes(FakePlayerCommand::followPath))));
 
         fp.then(CommandManager.literal("navstop")
             .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
@@ -502,6 +513,44 @@ public final class FakePlayerCommand {
             BlockPosArgumentType.getBlockPos(ctx, "first"),
             BlockPosArgumentType.getBlockPos(ctx, "second"));
         send(ctx, "[CRPI-FakePlayer] gotoAny " + h.name() + " : " + (ok ? "RUNNING" : "FAILED"));
+        return 1;
+    }
+
+    private static int follow(CommandContext<ServerCommandSource> ctx) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        Entity target = EntityArgumentType.getEntity(ctx, "target");
+        h.navigation().follow(target, 2);
+        send(ctx, "[CRPI-FakePlayer] follow " + h.name() + " -> " + target.getName().getString());
+        return 1;
+    }
+
+    private static int followPath(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        String raw = StringArgumentType.getString(ctx, "waypoints");
+        List<BlockPos> path = new ArrayList<>();
+        int y = h.player().getBlockY();
+        for (String part : raw.trim().split("\\s+")) {
+            String[] pair = part.split(",");
+            if (pair.length == 2) {
+                try {
+                    path.add(new BlockPos(Integer.parseInt(pair[0].trim()), y, Integer.parseInt(pair[1].trim())));
+                } catch (NumberFormatException e) {
+                    // skip malformed fragments
+                }
+            }
+        }
+        if (path.isEmpty()) {
+            send(ctx, "[CRPI-FakePlayer] followpath needs \"x,z x,z ...\" pairs");
+            return 0;
+        }
+        boolean ok = h.navigation().followPath(path);
+        send(ctx, "[CRPI-FakePlayer] followpath " + h.name() + " : " + (ok ? "RUNNING (" + path.size() + " waypoints)" : "FAILED"));
         return 1;
     }
 

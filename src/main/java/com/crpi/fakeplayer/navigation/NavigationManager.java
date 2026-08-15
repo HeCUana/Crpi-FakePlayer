@@ -48,6 +48,7 @@ public final class NavigationManager {
     private int repaths;
     private long lastRepathTick;
     private boolean invalidated;
+    private BlockPos lastFollowPos;
 
     public NavigationManager(FakePlayerHandle handle) {
         this.handle = handle;
@@ -123,9 +124,44 @@ public final class NavigationManager {
     }
 
     public void follow(Entity entity) {
-        // GoalFollow is a later phase; Phase 1 targets are static positions
-        this.stop();
-        this.status = NavigationStatus.FAILED;
+        follow(entity, 2);
+    }
+
+    /** Follows an entity, keeping within {@code distance} blocks. */
+    public void follow(Entity entity, int distance) {
+        start(new com.crpi.fakeplayer.navigation.goal.GoalFollow(entity, distance));
+    }
+
+    /**
+     * Executes an explicit waypoint path (no A*): each waypoint becomes a
+     * traverse movement. Movement stays physics-native.
+     */
+    public boolean followPath(java.util.List<BlockPos> waypoints) {
+        if (waypoints == null || waypoints.isEmpty()) {
+            return false;
+        }
+        this.executor.stop();
+        this.repaths = 0;
+        this.invalidated = false;
+        this.favoring.clear();
+        java.util.List<com.crpi.fakeplayer.navigation.movement.Movement> movements = new java.util.ArrayList<>();
+        BlockPos current = this.handle.player().getBlockPos();
+        for (BlockPos next : waypoints) {
+            int dx = next.getX() - current.getX();
+            int dz = next.getZ() - current.getZ();
+            if (next.getY() != current.getY()) {
+                return false; // Phase 5: same-height waypoints only
+            }
+            PathNode from = new PathNode(current.getX(), current.getY(), current.getZ(), 0, 0, null, null);
+            PathNode to = new PathNode(next.getX(), next.getY(), next.getZ(), 0, 0, null, null);
+            movements.add(new com.crpi.fakeplayer.navigation.movement.MovementTraverse(from, to, dx, dz));
+            current = next;
+        }
+        this.goal = null;
+        long tick = this.handle.world().getServer().getTicks();
+        this.executor.start(new Path(movements, null, movements.size(), tick));
+        this.status = NavigationStatus.RUNNING;
+        return true;
     }
 
     public void stop() {
@@ -176,6 +212,41 @@ public final class NavigationManager {
 
     /** Drives navigation once per server tick. */
     public void tick() {
+        // continuous following: the goal stays alive even after a previous
+        // SUCCESS — if the target wanders off, resume the chase
+        if (this.goal instanceof com.crpi.fakeplayer.navigation.goal.GoalFollow followGoal) {
+            if (!followGoal.target().isAlive()) {
+                if (this.status != NavigationStatus.FAILED) {
+                    this.executor.stop();
+                    this.status = NavigationStatus.FAILED;
+                }
+                return;
+            }
+            if (followGoal.isReached(this.handle.x(), this.handle.y(), this.handle.z())) {
+                if (this.status == NavigationStatus.RUNNING || this.status == NavigationStatus.CALCULATING) {
+                    this.executor.stop();
+                    this.status = NavigationStatus.SUCCESS;
+                    LOGGER.info("navigation followed player={} target={} repaths={}",
+                        this.handle.name(), followGoal.target().getName().getString(), this.repaths);
+                }
+                return;
+            }
+            BlockPos targetPos = followGoal.target().getBlockPos();
+            if (this.status == NavigationStatus.SUCCESS
+                || this.lastFollowPos == null
+                || Math.abs(targetPos.getX() - this.lastFollowPos.getX()) > 1
+                || Math.abs(targetPos.getY() - this.lastFollowPos.getY()) > 1
+                || Math.abs(targetPos.getZ() - this.lastFollowPos.getZ()) > 1) {
+                this.lastFollowPos = targetPos.toImmutable();
+                this.executor.stop();
+                // following is a continuous task: re-planning is expected and
+                // must not exhaust the failure budget
+                this.repaths = 0;
+                this.repath();
+                return;
+            }
+            // target steady: fall through and keep executing the current path
+        }
         if (this.status != NavigationStatus.RUNNING) {
             return;
         }
@@ -218,8 +289,12 @@ public final class NavigationManager {
         this.repaths = 0;
         this.invalidated = false;
         this.favoring.clear();
+        this.lastFollowPos = null;
         BlockPos startPos = this.handle.player().getBlockPos();
-        if (newGoal.isInGoal(startPos.getX(), startPos.getY(), startPos.getZ())) {
+        boolean alreadyThere = newGoal instanceof com.crpi.fakeplayer.navigation.goal.GoalFollow followGoal
+            ? followGoal.isReached(this.handle.x(), this.handle.y(), this.handle.z())
+            : newGoal.isInGoal(startPos.getX(), startPos.getY(), startPos.getZ());
+        if (alreadyThere) {
             // already at the goal
             this.status = NavigationStatus.SUCCESS;
             return true;
