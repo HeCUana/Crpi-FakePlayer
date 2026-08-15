@@ -11,9 +11,11 @@ import java.util.List;
  */
 public final class MovementProvider {
     private static final int[][] TRAVERSE = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    private static final int[][] DIAGONALS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+    private static final int MAX_FALL_DISTANCE = 3;
 
     public List<Movement> generate(NavigationWorld world, PathNode from) {
-        List<Movement> movements = new ArrayList<>(12);
+        List<Movement> movements = new ArrayList<>(16);
         // never query unloaded chunks: the engine only plans through loaded terrain
         net.minecraft.util.math.BlockPos center = new net.minecraft.util.math.BlockPos(from.x(), from.y(), from.z());
         if (!world.isLoaded(center)) {
@@ -23,6 +25,10 @@ public final class MovementProvider {
             addTraverse(world, from, d[0], d[1], movements);
             addAscend(world, from, d[0], d[1], movements);
             addDescend(world, from, d[0], d[1], movements);
+            addFall(world, from, d[0], d[1], movements);
+        }
+        for (int[] d : DIAGONALS) {
+            addDiagonal(world, from, d[0], d[1], movements);
         }
         return movements;
     }
@@ -72,6 +78,47 @@ public final class MovementProvider {
             && world.isPassable(new net.minecraft.util.math.BlockPos(x, from.y(), z))
             && world.isPassable(new net.minecraft.util.math.BlockPos(x, from.y() + 1, z))) {
             out.add(new MovementDescend(from, new PathNode(x, y, z, 0, 0, null, null), dx, dz));
+        }
+    }
+
+    private void addFall(NavigationWorld world, PathNode from, int dx, int dz, List<Movement> out) {
+        int x = from.x() + dx;
+        int z = from.z() + dz;
+        if (!targetLoaded(world, x, z)) {
+            return;
+        }
+        for (int drop = 2; drop <= MAX_FALL_DISTANCE; drop++) {
+            int y = from.y() - drop;
+            net.minecraft.util.math.BlockPos feet = new net.minecraft.util.math.BlockPos(x, y, z);
+            // target standable and every level of the fall shaft passable
+            // (head space all the way down)
+            boolean clear = true;
+            for (int i = 0; i <= drop; i++) {
+                if (!world.isPassable(new net.minecraft.util.math.BlockPos(x, from.y() - i, z))) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear && world.canStandAt(feet)) {
+                out.add(new MovementFall(from, new PathNode(x, y, z, 0, 0, null, null), dx, dz, drop));
+            }
+        }
+    }
+
+    private void addDiagonal(NavigationWorld world, PathNode from, int dx, int dz, List<Movement> out) {
+        int x = from.x() + dx;
+        int z = from.z() + dz;
+        if (!targetLoaded(world, x, z)) {
+            return;
+        }
+        net.minecraft.util.math.BlockPos feet = new net.minecraft.util.math.BlockPos(x, from.y(), z);
+        // no corner-cutting: both adjacent orthogonal positions must be passable
+        boolean cornerClear = world.isPassable(new net.minecraft.util.math.BlockPos(from.x() + dx, from.y(), from.z()))
+            && world.isPassable(new net.minecraft.util.math.BlockPos(from.x(), from.y(), from.z() + dz))
+            && world.isPassable(new net.minecraft.util.math.BlockPos(from.x() + dx, from.y() + 1, from.z()))
+            && world.isPassable(new net.minecraft.util.math.BlockPos(from.x(), from.y() + 1, from.z() + dz));
+        if (cornerClear && world.canStandAt(feet)) {
+            out.add(new MovementDiagonal(from, new PathNode(x, from.y(), z, 0, 0, null, null), dx, dz));
         }
     }
 }

@@ -1,6 +1,7 @@
 # CRPI-FakePlayer Navigation 系统 — 第一阶段分析报告
 
-> 状态：**Phase 1 已实施并实测通过（2026-08-15）**。Phase 2-5 待实施。以下为项目扫描与设计分析，未写任何代码。
+> 状态：**Phase 1-2 已实施并实测通过（2026-08-15）**。Phase 3-5 待实施。
+> Phase 2 新增：MovementDiagonal（防斜穿墙角）、MovementFall（2-3 格安全下落，超限拒绝）、StandPositionFinder（可站立位置查找，供 InteractionPositionFinder 复用）。以下为项目扫描与设计分析，未写任何代码。
 
 ---
 
