@@ -38,6 +38,27 @@ ctl.getContainerInfo();
 ctl.getNearbyContainers(8);                 // read-only environment sensing
 ```
 
+Plus a **Navigation API** (0.3.0): physics-native A* pathfinding — the planner computes a route, then drives the fake player through Carpet's action pack so all movement (walking, jumping, falling, collisions) is real vanilla physics, never teleporting:
+
+```java
+NavigationManager nav = bot.navigation();
+nav.gotoBlock(new BlockPos(100, 64, 200));   // A* to a block
+nav.gotoNear(pos, 3);                        // within a radius
+nav.gotoAny(a, b);                           // whichever is closest
+nav.follow(entity, 2);                       // continuous chase, auto-resumes
+nav.followPath(waypoints);                   // explicit waypoint path
+nav.stop(); nav.pause(); nav.resume(); nav.repath();
+nav.status();                                // IDLE/RUNNING/SUCCESS/FAILED/STUCK...
+nav.costModel().setBlockCost(block, 1000.0); // danger/terrain preferences
+nav.favoring().favor(pos, 500.0);            // avoid failed positions
+```
+
+- **8 movement types**: walk, 1-block step up (jump), step down, diagonal (no corner-cutting), safe 2-3 block falls, sprint-jump across 1-2 block gaps, break soft blocks, place blocks to cross pits
+- **Budgeted synchronous A***: 1000 nodes / 128-block radius / 20 ms per calculation — never blocks the server
+- **Self-healing**: stuck detection, automatic replanning (max 3), dynamic path invalidation when the world changes under a planned route
+- **Goals**: exact block, near, any-of/all-of composites, entity follow
+- Only plans through loaded chunks (never loads chunks by itself)
+
 ## Why CRPI-FakePlayer
 
 - **Pure server-side** — clients install nothing
@@ -63,6 +84,10 @@ ctl.getNearbyContainers(8);                 // read-only environment sensing
 /crpi fp gui close bot1                 # close the chest
 /crpi fp userelease bot1 20             # draw a bow for 1s and fire
 /crpi fp scancontainers bot1 16         # scan containers in a 16-block radius
+/crpi fp goto bot1 100 64 200           # A* navigate (also: near <r>, gotoany)
+/crpi fp follow bot1 bot2               # continuously follow another player
+/crpi fp followpath bot1 5,0 5,5        # explicit waypoint path
+/crpi fp navstatus bot1                 # navigation state
 ```
 
 All commands live under `/crpi fp` (OP level 2) and are toggled by 10 Carpet rules (`/crpi-fakeplayer <rule> <value>`).

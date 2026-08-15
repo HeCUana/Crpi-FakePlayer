@@ -4,12 +4,12 @@
 [![Carpet](https://img.shields.io/badge/Carpet-1.4.194-4A90D9?style=flat-square)]()
 [![Mod Loader](https://img.shields.io/badge/Loader-Fabric-8b6b9c?style=flat-square)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)]()
-[![Version](https://img.shields.io/badge/Version-0.1.0-orange?style=flat-square)]()
+[![Version](https://img.shields.io/badge/Version-0.3.0-orange?style=flat-square)]()
 
 Carpet Fake Player 的服务端行为框架（Fabric + Carpet 附属 Mod）。通过统一的 Action API 驱动假人执行接近真实玩家的 Minecraft 行为。
 
 - Minecraft **1.21.11** / Fabric Loader 0.19.x / Carpet **1.4.194**
-- 当前版本：**0.2.0**（V0.1~V0.4 功能集 + Control API）
+- 当前版本：**0.3.0**（V0.1~V0.4 功能集 + Control API + Navigation 系统）
 
 ## 重要
 
