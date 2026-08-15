@@ -66,6 +66,7 @@ public final class NavigationManager {
 
     public void setProfile(NavigationProfile profile) {
         this.profile = profile;
+        this.world.setProfile(profile);
     }
 
     public CostModel costModel() {
@@ -109,6 +110,16 @@ public final class NavigationManager {
 
     public boolean gotoNear(BlockPos target, int radius) {
         return start(new GoalNear(target, radius));
+    }
+
+    /** Navigates to whichever of the given targets is reachable first. */
+    public boolean gotoAny(BlockPos... targets) {
+        Goal[] goals = new Goal[targets.length];
+        for (int i = 0; i < targets.length; i++) {
+            goals[i] = new GoalBlock(targets[i]);
+        }
+        return start(new com.crpi.fakeplayer.navigation.goal.GoalComposite(
+            com.crpi.fakeplayer.navigation.goal.GoalComposite.Mode.ANY_OF, goals));
     }
 
     public void follow(Entity entity) {

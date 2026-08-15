@@ -1,6 +1,7 @@
 # CRPI-FakePlayer Navigation 系统 — 第一阶段分析报告
 
-> 状态：**Phase 1-3 已实施并实测通过（2026-08-15）**。Phase 4-5 待实施。
+> 状态：**Phase 1-4 已实施并实测通过（2026-08-15）**。Phase 5 待实施。
+> Phase 4 新增：MovementBreak（软方块挖掘，复用 vanilla MiningSession）、MovementPlace（背包方块填坑）、GoalComposite（ANY_OF/ALL_OF）、gotoAny API + /crpi fp gotoany 命令、NORMAL profile 启用 break/place。
 > Phase 3 新增：MovementParkour（1-2 格缺口跨越）、CostModel（危险方块代价）、Favoring（失败位置惩罚）、动态路径失效检测（世界变化→自动重规划）。
 > Phase 2 新增：MovementDiagonal（防斜穿墙角）、MovementFall（2-3 格安全下落，超限拒绝）、StandPositionFinder（可站立位置查找，供 InteractionPositionFinder 复用）。以下为项目扫描与设计分析，未写任何代码。
 

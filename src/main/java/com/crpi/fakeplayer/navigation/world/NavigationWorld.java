@@ -14,6 +14,7 @@ import net.minecraft.util.math.BlockPos;
  */
 public final class NavigationWorld {
     private final ServerWorld world;
+    private com.crpi.fakeplayer.navigation.NavigationProfile profile = com.crpi.fakeplayer.navigation.NavigationProfile.NORMAL;
 
     public NavigationWorld(ServerWorld world) {
         this.world = world;
@@ -21,6 +22,14 @@ public final class NavigationWorld {
 
     public ServerWorld world() {
         return this.world;
+    }
+
+    public com.crpi.fakeplayer.navigation.NavigationProfile profile() {
+        return this.profile;
+    }
+
+    public void setProfile(com.crpi.fakeplayer.navigation.NavigationProfile profile) {
+        this.profile = profile;
     }
 
     public boolean isLoaded(BlockPos pos) {

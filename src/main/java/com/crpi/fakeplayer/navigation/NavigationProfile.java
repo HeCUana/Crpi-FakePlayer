@@ -6,7 +6,7 @@ package com.crpi.fakeplayer.navigation;
  */
 public final class NavigationProfile {
     public static final NavigationProfile NORMAL = new NavigationProfile(
-        false, false, true, true, false, 3, 128, 20_000_000L);
+        true, true, true, true, false, 3, 128, 20_000_000L);
 
     public final boolean allowBreak;
     public final boolean allowPlace;

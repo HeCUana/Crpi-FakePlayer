@@ -188,6 +188,12 @@ public final class FakePlayerCommand {
                             .executes(FakePlayerCommand::gotoNear)))
                     .executes(FakePlayerCommand::gotoBlock))));
 
+        fp.then(CommandManager.literal("gotoany")
+            .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+                .then(CommandManager.argument("first", BlockPosArgumentType.blockPos())
+                    .then(CommandManager.argument("second", BlockPosArgumentType.blockPos())
+                        .executes(FakePlayerCommand::gotoAny)))));
+
         fp.then(CommandManager.literal("navstop")
             .then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
                 .executes(FakePlayerCommand::navStop)));
@@ -484,6 +490,18 @@ public final class FakePlayerCommand {
         }
         boolean ok = h.navigation().gotoNear(BlockPosArgumentType.getBlockPos(ctx, "pos"), IntegerArgumentType.getInteger(ctx, "radius"));
         send(ctx, "[CRPI-FakePlayer] gotoNear " + h.name() + " : " + (ok ? "RUNNING" : "FAILED"));
+        return 1;
+    }
+
+    private static int gotoAny(CommandContext<ServerCommandSource> ctx) {
+        FakePlayerHandle h = handle(ctx, "player");
+        if (h == null) {
+            return 0;
+        }
+        boolean ok = h.navigation().gotoAny(
+            BlockPosArgumentType.getBlockPos(ctx, "first"),
+            BlockPosArgumentType.getBlockPos(ctx, "second"));
+        send(ctx, "[CRPI-FakePlayer] gotoAny " + h.name() + " : " + (ok ? "RUNNING" : "FAILED"));
         return 1;
     }
 

@@ -16,6 +16,11 @@ public final class MovementProvider {
 
     public List<Movement> generate(NavigationWorld world, PathNode from) {
         List<Movement> movements = new ArrayList<>(16);
+        return generate(world, from, movements);
+    }
+
+    /** Generation with profile switches (break/place/parkour). */
+    public List<Movement> generate(NavigationWorld world, PathNode from, List<Movement> movements) {
         // never query unloaded chunks: the engine only plans through loaded terrain
         net.minecraft.util.math.BlockPos center = new net.minecraft.util.math.BlockPos(from.x(), from.y(), from.z());
         if (!world.isLoaded(center)) {
@@ -26,6 +31,8 @@ public final class MovementProvider {
             addAscend(world, from, d[0], d[1], movements);
             addDescend(world, from, d[0], d[1], movements);
             addFall(world, from, d[0], d[1], movements);
+            addBreak(world, from, d[0], d[1], movements);
+            addPlace(world, from, d[0], d[1], movements);
         }
         for (int[] d : DIAGONALS) {
             addDiagonal(world, from, d[0], d[1], movements);
@@ -35,6 +42,57 @@ public final class MovementProvider {
             addParkour(world, from, d[0], d[1], 2, movements);
         }
         return movements;
+    }
+
+    private void addBreak(NavigationWorld world, PathNode from, int dx, int dz, List<Movement> out) {
+        if (!world.profile().allowBreak) {
+            return;
+        }
+        int x = from.x() + dx;
+        int z = from.z() + dz;
+        if (!targetLoaded(world, x, z)) {
+            return;
+        }
+        net.minecraft.util.math.BlockPos pos = new net.minecraft.util.math.BlockPos(x, from.y(), z);
+        net.minecraft.block.BlockState state = world.state(pos);
+        // soft blocks only: hard stone needs tools and long mining times (later phase)
+        if (!state.blocksMovement() || state.isAir()) {
+            return;
+        }
+        float hardness = state.getHardness(world.world(), pos);
+        if (hardness <= 0.0F || hardness > 1.5F) {
+            return;
+        }
+        // the space must be standable once the block is gone
+        if (!world.canStandAt(pos)) {
+            return;
+        }
+        out.add(new MovementBreak(from, new PathNode(x, from.y(), z, 0, 0, null, null), pos));
+    }
+
+    private void addPlace(NavigationWorld world, PathNode from, int dx, int dz, List<Movement> out) {
+        if (!world.profile().allowPlace) {
+            return;
+        }
+        int x = from.x() + dx;
+        int z = from.z() + dz;
+        if (!targetLoaded(world, x, z)) {
+            return;
+        }
+        net.minecraft.util.math.BlockPos placePos = new net.minecraft.util.math.BlockPos(x, from.y() - 1, z);
+        // a pit too deep to fall into: floor absent, nothing under for max fall
+        if (world.isSolid(placePos)) {
+            return;
+        }
+        if (!world.state(placePos).isAir()) {
+            return;
+        }
+        // the space above the gap must be clear for the walk-over
+        if (!world.isPassable(new net.minecraft.util.math.BlockPos(x, from.y(), z))
+            || !world.isPassable(new net.minecraft.util.math.BlockPos(x, from.y() + 1, z))) {
+            return;
+        }
+        out.add(new MovementPlace(from, new PathNode(x, from.y(), z, 0, 0, null, null), placePos));
     }
 
     private void addParkour(NavigationWorld world, PathNode from, int dx, int dz, int span, List<Movement> out) {
