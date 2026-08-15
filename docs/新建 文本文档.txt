@@ -1,0 +1,1896 @@
+你现在是一名资深 Minecraft Java Mod / AI Agent / Pathfinding 工程师。
+
+你的任务是为当前项目 CRPI-FakePlayer 实现一套高质量、可扩展、适合 FakePlayer 的 Minecraft 寻路与移动系统。
+
+==================================================
+一、项目目标
+==================================================
+
+为 CRPI-FakePlayer 增加完整的 Navigation / Pathfinding 系统。
+
+目标不是实现一个简单的 A*。
+
+目标是实现一个类似 Baritone 的 Minecraft Agent Navigation Engine：
+
+World
+ ↓
+Goal
+ ↓
+Path Planning
+ ↓
+Movement Calculation
+ ↓
+A*
+ ↓
+Path
+ ↓
+Path Executor
+ ↓
+FakePlayer Control
+ ↓
+Minecraft Physics
+ ↓
+实际移动
+
+系统必须支持动态重规划、障碍检测、跳跃、下落、台阶、Parkour、卡死检测、路径失败恢复，以及未来扩展挖掘/放置/交互能力。
+
+==================================================
+二、重要参考项目
+==================================================
+
+参考以下项目的架构思想，但不要直接复制其代码：
+
+1. Mineflayer
+https://github.com/PrismarineJS/mineflayer
+
+重点参考：
+- Goal 抽象
+- Pathfinder API
+- Movement 配置
+- GoalNear / GoalBlock / GoalFollow 等目标设计
+- 模块化 Pathfinder API
+
+2. Mineflayer Pathfinder
+https://github.com/PrismarineJS/mineflayer-pathfinder
+
+重点参考：
+- Goal
+- Movement
+- Path
+- Pathfinder
+- 动态重新寻路
+
+3. Baritone
+https://github.com/cabaletta/baritone
+
+这是最重要的参考。
+
+重点研究：
+- AStarPathFinder
+- PathNode
+- Movement
+- Moves
+- Path
+- PathExecutor
+- PathingBehavior
+- MovementStatus
+- Cost system
+- Favoring
+- Repath
+- SplicedPath
+- CutoffPath
+- Lookahead planning
+- Chunk/world cache
+- Parkour movement
+
+4. Perimeter-Digger
+https://github.com/HackerRouter/Perimeter-Digger
+
+重点参考：
+- NavigationService
+- InteractionPositionFinder
+- Walking / Elytra 导航分离
+- Navigation watchdog
+- Navigation retry
+- Navigation profile
+- 任务驱动导航
+- 目标位置 → 可交互位置转换
+
+注意：
+
+Perimeter-Digger 本身主要是 Baritone 的上层任务系统，不要把它误认为独立 Pathfinder。
+
+其核心思想是：
+
+Task
+ ↓
+NavigationService
+ ↓
+Baritone
+ ↓
+Pathing
+ ↓
+Movement
+
+==================================================
+三、核心设计原则
+==================================================
+
+绝对不要实现成：
+
+AStar
+ ↓
+一串 BlockPos
+ ↓
+FakePlayer.setPosition()
+
+禁止直接修改 FakePlayer 坐标实现移动。
+
+必须通过 FakePlayer 原有 Control 系统：
+
+- forward
+- backward
+- left
+- right
+- jump
+- sprint
+- sneak
+- look
+- attack
+- interact
+
+让 Minecraft 原生物理系统完成实际移动。
+
+Pathfinding 负责“决定怎么走”。
+
+Control 负责“执行怎么走”。
+
+==================================================
+四、总体架构
+==================================================
+
+创建：
+
+navigation/
+
+建议结构：
+
+navigation/
+├── NavigationManager
+│
+├── goal/
+│   ├── Goal
+│   ├── GoalBlock
+│   ├── GoalNear
+│   ├── GoalXZ
+│   ├── GoalY
+│   ├── GoalFollow
+│   ├── GoalEntity
+│   └── GoalComposite
+│
+├── path/
+│   ├── Path
+│   ├── PathNode
+│   ├── PathSegment
+│   ├── CutoffPath
+│   └── SplicedPath
+│
+├── pathfinding/
+│   ├── PathFinder
+│   ├── AStarPathFinder
+│   ├── OpenSet
+│   ├── BinaryHeapOpenSet
+│   └── PathCalculationContext
+│
+├── movement/
+│   ├── Movement
+│   ├── MovementResult
+│   ├── MovementContext
+│   ├── MovementStatus
+│   ├── MovementWalk
+│   ├── MovementTraverse
+│   ├── MovementAscend
+│   ├── MovementDescend
+│   ├── MovementDiagonal
+│   ├── MovementFall
+│   └── MovementParkour
+│
+├── executor/
+│   ├── PathExecutor
+│   ├── MovementExecutor
+│   └── NavigationTickExecutor
+│
+├── cost/
+│   ├── CostModel
+│   ├── MovementCost
+│   ├── BlockCost
+│   └── Favoring
+│
+├── world/
+│   ├── NavigationWorld
+│   ├── CollisionHelper
+│   ├── BlockAnalyzer
+│   ├── StandPositionFinder
+│   └── WorldCache
+│
+├── recovery/
+│   ├── NavigationWatchdog
+│   ├── StuckDetector
+│   ├── PathRecovery
+│   └── RepathManager
+│
+└── interaction/
+    ├── InteractionPositionFinder
+    ├── InteractionTarget
+    └── ReachabilityChecker
+
+
+如果当前项目已有类似类，请不要重复创建。
+
+先扫描项目结构，然后复用已有 API。
+
+==================================================
+五、NavigationManager
+==================================================
+
+NavigationManager 是整个 Navigation 系统的入口。
+
+提供类似：
+
+navigation.goto(x, y, z)
+
+navigation.goto(BlockPos)
+
+navigation.gotoNear(BlockPos, radius)
+
+navigation.follow(Entity)
+
+navigation.stop()
+
+navigation.isNavigating()
+
+navigation.isFinished()
+
+navigation.isStuck()
+
+navigation.getCurrentPath()
+
+navigation.getCurrentGoal()
+
+navigation.repath()
+
+示例：
+
+NavigationManager navigation;
+
+navigation.goto(new BlockPos(100, 64, 200));
+
+不要让上层 Task 直接操作 AStar。
+
+必须：
+
+Task
+ ↓
+NavigationManager
+ ↓
+Goal
+ ↓
+PathFinder
+
+==================================================
+六、Goal 系统
+==================================================
+
+Goal 设计参考 Mineflayer。
+
+定义：
+
+Goal {
+    boolean isInGoal(int x, int y, int z);
+
+    double heuristic(int x, int y, int z);
+}
+
+实现：
+
+GoalBlock
+
+目标：
+到达指定 BlockPos。
+
+GoalNear
+
+目标：
+进入指定半径。
+
+GoalXZ
+
+只关心 X/Z。
+
+GoalY
+
+只关心 Y。
+
+GoalFollow
+
+跟随 Entity。
+
+GoalEntity
+
+前往实体附近。
+
+GoalCompositeAny
+
+多个 Goal 任意一个满足即可。
+
+GoalCompositeAll
+
+所有目标依次完成。
+
+以后允许扩展：
+
+GoalInteractable
+
+GoalSafePosition
+
+GoalChest
+
+GoalMine
+
+GoalEscape
+
+==================================================
+七、PathNode
+==================================================
+
+PathNode 不只是 BlockPos。
+
+至少保存：
+
+x
+y
+z
+
+gCost
+hCost
+fCost
+
+parent
+
+visited
+
+closed
+
+cameFromMovement
+
+movementCost
+
+estimatedCost
+
+nodeHash
+
+必要时保存：
+
+chunkX
+chunkZ
+
+以及：
+
+dangerLevel
+
+collisionFlags
+
+standingFlags
+
+PathNode 必须能够知道：
+
+“我是通过哪一个 Movement 从父节点到这里的。”
+
+例如：
+
+A
+ ↓
+MovementAscend
+ ↓
+B
+
+而不是只记录：
+
+A → B
+
+==================================================
+八、A* PathFinder
+==================================================
+
+实现标准 A*。
+
+核心：
+
+fCost = gCost + hCost
+
+使用：
+
+BinaryHeapOpenSet
+
+避免每次 O(n) 搜索最低节点。
+
+流程：
+
+Start
+ ↓
+OpenSet
+ ↓
+最低 fCost
+ ↓
+Goal?
+ ↓
+生成 Movement
+ ↓
+Movement.calculate()
+ ↓
+MovementResult
+ ↓
+合法？
+ ↓
+计算 cost
+ ↓
+更新 Neighbor
+ ↓
+继续
+
+禁止直接以：
+
+“相邻 BlockPos”
+
+作为唯一邻居。
+
+邻居必须由 Movement 系统产生。
+
+==================================================
+九、Movement 系统
+==================================================
+
+这是整个系统最重要的部分。
+
+参考 Baritone 的：
+
+Movement
+Moves
+MovementAscend
+MovementDescend
+MovementDiagonal
+MovementFall
+MovementParkour
+MovementTraverse
+
+设计：
+
+Movement {
+
+    boolean canApply(context, node);
+
+    MovementResult calculate(context, node);
+
+    void tick(MovementContext context);
+
+    boolean isComplete(context);
+
+    boolean isFailed(context);
+
+    double cost();
+
+}
+
+MovementResult：
+
+- target
+- cost
+- valid
+- movementType
+- danger
+- requiredActions
+
+==================================================
+十、第一阶段 Movement
+==================================================
+
+必须实现：
+
+1. MovementTraverse
+
+普通水平移动。
+
+支持：
+
+N
+S
+E
+W
+
+2. MovementAscend
+
+例如：
+
+玩家：
+
+Y=64
+
+目标：
+
+Y=65
+
+需要：
+
+forward + jump
+
+3. MovementDescend
+
+从高处向低处移动。
+
+4. MovementFall
+
+允许安全掉落。
+
+必须计算：
+
+fallDistance
+
+并判断：
+
+是否超过最大安全高度。
+
+5. MovementDiagonal
+
+允许：
+
+NE
+NW
+SE
+SW
+
+6. MovementParkour
+
+支持简单跨越：
+
+1 格
+
+2 格
+
+以后再扩展复杂 Parkour。
+
+==================================================
+十一、Movement 计算
+==================================================
+
+Movement 计算时必须检查：
+
+玩家脚部空间
+
+玩家身体空间
+
+玩家头部空间
+
+目标站立位置
+
+目标脚下方块
+
+碰撞箱
+
+Fluid
+
+危险方块
+
+掉落距离
+
+是否可以跳跃
+
+是否可以站立
+
+不能只判断：
+
+block.isAir()
+
+必须使用 Minecraft 当前版本真实 Collision Shape。
+
+优先使用：
+
+VoxelShape
+
+CollisionShape
+
+BlockState
+
+Entity collision
+
+不要写死某个 Minecraft 版本的方块列表。
+
+==================================================
+十二、站立位置
+==================================================
+
+实现：
+
+StandPositionFinder
+
+给定：
+
+目标 BlockPos
+
+返回：
+
+所有可站立的位置。
+
+条件：
+
+1. 脚下必须可站立
+2. 玩家身体不能碰撞
+3. 玩家头部不能碰撞
+4. 不能被液体阻塞
+5. 位置必须可从当前世界移动到
+6. 必要时检查视线
+
+这个模块以后给：
+
+InteractionPositionFinder
+
+复用。
+
+==================================================
+十三、Cost 系统
+==================================================
+
+不要只使用：
+
+每移动 1 格 = 1 Cost
+
+实现：
+
+CostModel
+
+例如：
+
+Walk:
+1
+
+Sprint:
+0.8
+
+Jump:
+1.2
+
+Fall:
+1 + fallPenalty
+
+Parkour:
+1.5
+
+Danger:
++100
+
+Lava:
++10000
+
+Fire:
++1000
+
+Cactus:
++500
+
+Breaking:
+breakTime
+
+Placing:
+placeTime
+
+总成本可以理解为：
+
+movementTime
++
+breakTime
++
+placeTime
++
+dangerPenalty
++
+terrainPenalty
+
+必须允许未来动态修改。
+
+例如：
+
+navigation.getCostModel()
+    .setBlockCost(LAVA, 100000);
+
+==================================================
+十四、Favoring
+==================================================
+
+参考 Baritone Favoring。
+
+允许：
+
+某些位置降低 Cost。
+
+某些位置增加 Cost。
+
+例如：
+
+刚刚失败的位置：
+
++1000
+
+刚刚卡住的位置：
+
++500
+
+玩家最近走过的位置：
+
++50
+
+安全道路：
+
+-10
+
+这样可以避免：
+
+A* 每次失败后重新走完全相同的路线。
+
+==================================================
+十五、Path
+==================================================
+
+Path 至少保存：
+
+List<PathNode>
+
+List<Movement>
+
+currentIndex
+
+goal
+
+totalCost
+
+estimatedCost
+
+createdTime
+
+必须支持：
+
+getNextMovement()
+
+getCurrentMovement()
+
+advance()
+
+isFinished()
+
+cutoff()
+
+splice()
+
+==================================================
+十六、PathExecutor
+==================================================
+
+PathExecutor 不负责计算路径。
+
+只负责：
+
+执行 Path。
+
+流程：
+
+Path
+ ↓
+Movement
+ ↓
+Movement.tick()
+ ↓
+FakePlayerControl
+ ↓
+Minecraft Physics
+ ↓
+检查 Movement 是否完成
+ ↓
+下一个 Movement
+
+例如：
+
+MovementAscend
+
+tick：
+
+look(target)
+
+forward(true)
+
+jump(true)
+
+sprint(true)
+
+然后等待 Minecraft Physics。
+
+不要：
+
+fakePlayer.setPosition()
+
+==================================================
+十七、Look 控制
+==================================================
+
+MovementExecutor 必须可以请求：
+
+lookAt(BlockPos)
+
+lookAt(Vec3)
+
+lookAt(Entity)
+
+实现平滑旋转。
+
+不要每 tick 瞬间修改 yaw/pitch。
+
+支持：
+
+maxYawChange
+
+maxPitchChange
+
+rotationSpeed
+
+==================================================
+十八、动态重规划
+==================================================
+
+Path 不是永久有效。
+
+每 tick 检查：
+
+当前 Block 是否变化
+
+前方是否出现障碍
+
+目标是否变化
+
+玩家是否偏离 Path
+
+Movement 是否失败
+
+World 是否发生变化
+
+如果发现：
+
+Path invalid
+
+则：
+
+停止当前 Movement
+ ↓
+Repath
+ ↓
+重新计算 Path
+
+==================================================
+十九、Lookahead Planning
+==================================================
+
+参考 Baritone。
+
+不要：
+
+Path 完全走完
+ ↓
+重新计算
+
+而应该：
+
+当前 Path 执行
+ +
+后台计算下一段 Path
+
+例如：
+
+Path A：
+
+A → B → C → D
+
+执行到：
+
+B
+
+后台开始：
+
+D → E → F → G
+
+然后：
+
+SplicedPath：
+
+A → B → C → D → E → F → G
+
+这样实现长距离导航。
+
+==================================================
+二十、World Cache
+==================================================
+
+实现：
+
+NavigationWorld
+
+不要让 AStar 直接依赖：
+
+Minecraft.getInstance()
+
+所有世界数据通过：
+
+NavigationWorld
+
+访问。
+
+例如：
+
+isSolid(pos)
+
+isPassable(pos)
+
+getBlockState(pos)
+
+getCollisionShape(pos)
+
+canStand(pos)
+
+isDangerous(pos)
+
+这样以后：
+
+Client FakePlayer
+
+Server FakePlayer
+
+测试环境
+
+都可以复用。
+
+==================================================
+二十一、Chunk Cache
+==================================================
+
+参考 Baritone。
+
+不要一次性加载整个世界。
+
+寻路只访问：
+
+当前已加载 Chunk
+
+如果目标很远：
+
+采用：
+
+分段规划。
+
+例如：
+
+FakePlayer
+
+当前位置：
+
+0,0
+
+目标：
+
+10000,10000
+
+不要：
+
+一次 A* 到 10000。
+
+而是：
+
+0
+ ↓
+Chunk Region
+ ↓
+Chunk Region
+ ↓
+Chunk Region
+ ↓
+目标附近
+ ↓
+精细 A*
+
+==================================================
+二十二、Navigation Watchdog
+==================================================
+
+必须实现。
+
+Watchdog 每 tick 检查：
+
+lastPosition
+
+currentPosition
+
+lastProgressTime
+
+currentMovement
+
+distanceToGoal
+
+pathIndex
+
+如果：
+
+超过 N tick 没有明显位移
+
+判定：
+
+STUCK
+
+然后：
+
+Recovery
+
+优先：
+
+1. 重新执行当前 Movement
+2. 微调位置
+3. Repath
+4. 增加当前区域 Cost
+5. 更换路线
+6. 超过 retryCount 才报告失败
+
+状态：
+
+RUNNING
+
+STUCK
+
+RECOVERING
+
+REPATHING
+
+FAILED
+
+SUCCESS
+
+CANCELLED
+
+==================================================
+二十三、Navigation Profile
+==================================================
+
+实现：
+
+NavigationProfile
+
+例如：
+
+NORMAL
+
+SAFE
+
+MINING
+
+INTERACTION
+
+ESCAPE
+
+TRAVEL
+
+每个 Profile 控制：
+
+allowBreak
+
+allowPlace
+
+allowParkour
+
+allowSprint
+
+allowSwim
+
+allowDangerousDrop
+
+maxFallDistance
+
+maxSearchDistance
+
+maxCalculationTime
+
+preferSafePath
+
+preferShortPath
+
+preferFastPath
+
+例如：
+
+INTERACTION：
+
+allowBreak = false
+allowPlace = false
+allowParkour = false
+
+MINING：
+
+allowBreak = true
+allowPlace = true
+
+==================================================
+二十四、InteractionPositionFinder
+==================================================
+
+参考 Perimeter-Digger。
+
+实现：
+
+findInteractionPositions(BlockPos target)
+
+返回：
+
+List<InteractionPosition>
+
+InteractionPosition：
+
+standPosition
+
+lookPosition
+
+distance
+
+yaw
+
+pitch
+
+canSee
+
+reachable
+
+检查：
+
+脚下
+
+身体
+
+头部
+
+碰撞
+
+距离
+
+Raycast
+
+视线
+
+目标方块
+
+然后选择：
+
+最佳 InteractionPosition。
+
+例如：
+
+Chest
+
+可能存在：
+
+位置 A：距离 2
+位置 B：距离 3
+位置 C：被墙挡住
+
+选择：
+
+A
+
+==================================================
+二十五、Task 系统
+==================================================
+
+Navigation 不应该直接承担复杂任务。
+
+实现：
+
+Task
+
+例如：
+
+GoToTask
+
+FollowTask
+
+InteractTask
+
+MineTask
+
+ReturnTask
+
+Task：
+
+RUNNING
+
+SUCCESS
+
+FAILED
+
+CANCELLED
+
+例如：
+
+GoToChestTask：
+
+scan chest
+ ↓
+findInteractionPosition
+ ↓
+Navigation.goto(position)
+ ↓
+lookAt(chest)
+ ↓
+checkReachability
+ ↓
+Interact
+ ↓
+SUCCESS
+
+==================================================
+二十六、FakePlayer 集成
+==================================================
+
+这是最重要的一层。
+
+Navigation Engine 不允许直接依赖 FakePlayer 的具体实现。
+
+创建：
+
+FakePlayerMovementController
+
+提供：
+
+forward(boolean)
+
+backward(boolean)
+
+left(boolean)
+
+right(boolean)
+
+jump(boolean)
+
+sprint(boolean)
+
+sneak(boolean)
+
+look(yaw, pitch)
+
+stop()
+
+然后：
+
+PathExecutor
+
+只调用：
+
+FakePlayerMovementController
+
+不要直接：
+
+FakePlayer.xxx()
+
+这样以后可以替换不同 FakePlayer。
+
+==================================================
+二十七、Tick 模型
+==================================================
+
+Navigation 必须基于 Minecraft Tick。
+
+每 tick：
+
+1. 更新世界状态
+2. 更新当前 Movement
+3. 更新 FakePlayer 状态
+4. 检查 Movement 完成
+5. 检查 Stuck
+6. 检查 Path 是否失效
+7. 判断是否 Repath
+8. 执行 Control
+
+禁止使用大量独立线程直接修改 Minecraft Entity 状态。
+
+Path Calculation 可以异步。
+
+Minecraft World / Entity 的实际修改必须回到正确的 Minecraft Thread。
+
+==================================================
+二十八、异步 Pathfinding
+==================================================
+
+A* 计算可以放到后台线程。
+
+但：
+
+World 数据不能直接跨线程随意访问。
+
+所以：
+
+主线程：
+
+Snapshot World
+
+↓
+
+NavigationWorldSnapshot
+
+↓
+
+后台：
+
+AStar
+
+↓
+
+Path
+
+↓
+
+主线程：
+
+PathExecutor
+
+必须防止：
+
+ConcurrentModification
+
+World unloaded
+
+Entity removed
+
+Chunk changed
+
+==================================================
+二十九、失败处理
+==================================================
+
+Pathfinding 失败时必须返回明确原因：
+
+NO_PATH
+
+GOAL_UNREACHABLE
+
+WORLD_UNAVAILABLE
+
+CALCULATION_TIMEOUT
+
+MOVEMENT_FAILED
+
+STUCK
+
+CANCELLED
+
+INVALID_GOAL
+
+MAX_RETRIES
+
+不要只：
+
+return null
+
+==================================================
+三十、API
+==================================================
+
+最终希望暴露：
+
+navigation.goto(BlockPos)
+
+navigation.gotoNear(BlockPos, int radius)
+
+navigation.follow(Entity)
+
+navigation.stop()
+
+navigation.pause()
+
+navigation.resume()
+
+navigation.repath()
+
+navigation.isNavigating()
+
+navigation.isFinished()
+
+navigation.isStuck()
+
+navigation.getStatus()
+
+navigation.getCurrentPath()
+
+navigation.getCurrentGoal()
+
+navigation.setProfile(NavigationProfile)
+
+navigation.getProfile()
+
+navigation.setCostModel(CostModel)
+
+navigation.getWatchdog()
+
+==================================================
+三十一、调试功能
+==================================================
+
+必须增加 Debug Mode。
+
+能够显示：
+
+Start
+
+Goal
+
+Path
+
+Current Node
+
+Current Movement
+
+OpenSet
+
+Visited Nodes
+
+Danger Nodes
+
+Interaction Position
+
+Collision Shape
+
+以及：
+
+A* calculation time
+
+Path length
+
+Path cost
+
+Repath count
+
+Stuck count
+
+Movement type
+
+Debug 信息可以通过：
+
+/crpi navigation debug
+
+控制。
+
+==================================================
+三十二、性能要求
+==================================================
+
+不要每 tick 完整重新计算 A*。
+
+必须：
+
+缓存 Path
+
+动态 Repath
+
+Lookahead
+
+Chunk Snapshot
+
+限制最大节点数量
+
+限制最大计算时间
+
+限制搜索范围
+
+使用 Binary Heap OpenSet
+
+避免大量对象创建。
+
+特别注意 Minecraft 服务端 Tick 性能。
+
+==================================================
+三十三、实现顺序
+==================================================
+
+不要一次写完整系统。
+
+按照下面顺序实现：
+
+Phase 1：
+
+NavigationWorld
+
+Goal
+
+PathNode
+
+MovementResult
+
+Basic Movement
+
+AStar
+
+Path
+
+PathExecutor
+
+FakePlayerMovementController
+
+完成：
+
+goto(BlockPos)
+
+Phase 2：
+
+Jump
+
+Ascend
+
+Descend
+
+Fall
+
+Diagonal
+
+Collision
+
+StandPositionFinder
+
+Phase 3：
+
+Parkour
+
+CostModel
+
+Danger
+
+Favoring
+
+Dynamic Repath
+
+Phase 4：
+
+Watchdog
+
+StuckDetector
+
+Recovery
+
+Retry
+
+Phase 5：
+
+Lookahead
+
+SplicedPath
+
+Chunk Snapshot
+
+Async Pathfinding
+
+Phase 6：
+
+InteractionPositionFinder
+
+Interaction
+
+GoalInteractable
+
+Phase 7：
+
+Task System
+
+GoToTask
+
+FollowTask
+
+InteractTask
+
+MineTask
+
+ReturnTask
+
+==================================================
+三十四、代码实现要求
+==================================================
+
+开始写代码之前：
+
+第一步：
+
+扫描整个项目。
+
+寻找：
+
+FakePlayer
+
+Control
+
+Tick
+
+World
+
+Entity
+
+Interaction
+
+Inventory
+
+NBT
+
+已有 API
+
+不要重复实现已有功能。
+
+第二步：
+
+分析当前 Minecraft / Loader / Mapping / Java 版本。
+
+所有代码必须适配当前项目版本。
+
+第三步：
+
+检查现有 API 命名规范。
+
+遵循项目已有代码风格。
+
+第四步：
+
+先创建最小可运行版本。
+
+不要一次实现所有功能。
+
+第五步：
+
+每完成一个 Phase：
+
+编译项目。
+
+修复：
+
+compile errors
+
+mapping errors
+
+API errors
+
+threading errors
+
+然后再进入下一阶段。
+
+==================================================
+三十五、非常重要的限制
+==================================================
+
+不要直接复制 Baritone 源代码。
+
+不要复制 Mineflayer JavaScript 代码。
+
+不要复制 Perimeter-Digger 代码。
+
+只参考它们的：
+
+Architecture
+
+Algorithms
+
+API Design
+
+State Machine
+
+Pathfinding Concepts
+
+然后根据当前项目许可证和项目结构重新实现。
+
+如果发现已有 Baritone 依赖：
+
+先分析是否可以直接通过 Baritone API 集成。
+
+如果当前项目已经依赖 Baritone：
+
+优先考虑：
+
+CRPI Navigation API
+ ↓
+Baritone Adapter
+ ↓
+Baritone
+
+而不是重复实现整个 A*。
+
+如果项目没有 Baritone：
+
+再实现自己的 Baritone-style Navigation Engine。
+
+==================================================
+三十六、最终验收标准
+==================================================
+
+至少完成以下测试：
+
+Test 1：
+
+平地：
+
+A → B
+
+正常到达。
+
+Test 2：
+
+前方 1 格障碍：
+
+自动跳跃。
+
+Test 3：
+
+前方 2 格障碍：
+
+寻找其他路线。
+
+Test 4：
+
+前方深坑：
+
+自动绕路。
+
+Test 5：
+
+有墙：
+
+自动绕墙。
+
+Test 6：
+
+目标在高处：
+
+Ascend。
+
+Test 7：
+
+目标在低处：
+
+Descend。
+
+Test 8：
+
+路径中途放置障碍：
+
+自动 Repath。
+
+Test 9：
+
+FakePlayer 被卡住：
+
+Watchdog 检测。
+
+Test 10：
+
+第一次路线失败：
+
+增加失败区域 Cost。
+
+第二次选择不同路线。
+
+Test 11：
+
+箱子：
+
+找到可以站立并看到箱子的 InteractionPosition。
+
+Test 12：
+
+长距离：
+
+使用分段 Path / Lookahead。
+
+==================================================
+三十七、最终代码质量要求
+==================================================
+
+代码必须：
+
+高内聚
+
+低耦合
+
+接口优先
+
+可测试
+
+可扩展
+
+避免 God Class
+
+避免 NavigationManager 包含所有逻辑。
+
+特别注意：
+
+AStarPathFinder
+
+Movement
+
+PathExecutor
+
+FakePlayerControl
+
+World
+
+Goal
+
+Task
+
+必须相互解耦。
+
+==================================================
+三十八、最终目标
+==================================================
+
+最终系统应该表现得像一个真正的 Minecraft AI Agent：
+
+FakePlayer 接收到：
+
+goto(chest)
+
+系统自动：
+
+找到目标
+ ↓
+找到可交互位置
+ ↓
+分析世界
+ ↓
+计算路径
+ ↓
+选择 Walk / Jump / Fall / Parkour
+ ↓
+执行 Movement
+ ↓
+实时检测世界
+ ↓
+发现障碍
+ ↓
+动态 Repath
+ ↓
+检测卡死
+ ↓
+Recovery
+ ↓
+到达目标
+ ↓
+调整视角
+ ↓
+执行 Interaction
+
+而不是：
+
+计算一次 A*
+ ↓
+机械执行固定坐标。
+
+请按照上述架构开始分析当前项目并实施。
+
+第一步只做：
+
+【项目结构扫描 + 当前 FakePlayer Control / Tick / World API 分析】
+
+不要立即大规模写代码。
+
+先输出：
+
+1. 当前项目结构
+2. FakePlayer 控制链
+3. 当前 Tick 链
+4. 当前 World / Collision API
+5. 可以直接复用的模块
+6. 需要新增的模块
+7. 与 Baritone 架构的对应关系
+8. 第一阶段具体修改文件列表
+
+然后等待确认再实施。

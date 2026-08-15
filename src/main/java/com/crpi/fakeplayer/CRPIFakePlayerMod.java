@@ -73,6 +73,7 @@ public class CRPIFakePlayerMod implements ModInitializer, CarpetExtension {
     public void onTick(MinecraftServer server) {
         SCHEDULER.tick(server);
         com.crpi.fakeplayer.control.ControlManager.tick(server);
+        com.crpi.fakeplayer.navigation.NavigationRegistry.tick(server);
     }
 
     @Override

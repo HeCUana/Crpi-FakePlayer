@@ -102,6 +102,29 @@ ctl.sendChatMessage("hi"); ctl.getContainerInfo();
 ctl.getNearbyContainers(8);                // 环境感知（只读容器扫描）
 ```
 
+## Navigation API（A* 寻路，Phase 1）
+
+物理原生寻路：A* 规划 + Carpet action pack 驱动假人原生物理移动（跳跃/下落/碰撞全部原生，不瞬移）：
+
+```java
+NavigationManager nav = bot.navigation();
+
+nav.gotoBlock(new BlockPos(100, 64, 200));   // A* 导航到目标
+nav.gotoNear(new BlockPos(100, 64, 200), 3); // 到达半径内即可
+nav.stop();                                  // 停止导航
+nav.status();                                // IDLE/CALCULATING/RUNNING/SUCCESS/FAILED/STUCK/CANCELLED
+nav.isNavigating(); nav.isFinished();
+nav.repath();                                // 手动重规划
+```
+
+- 支持的移动：平地走、1 格上台阶（跳跃）、1 格下台阶（下落）；自动绕障碍
+- 每 tick 执行（无阻塞）；卡住检测（40 tick）→ 自动重规划（最多 3 次）
+- 同步 A*：节点上限 1000、搜索半径 128、20ms 预算（超出返回部分路径继续执行）
+- 只规划已加载区块（不主动加载）
+- 命令：`/crpi fp goto <玩家> <坐标> [near <半径>]`、`/crpi fp navstop`、`/crpi fp navstatus`
+
+> Phase 1 范围：Diagonal/Fall/Parkour/水路/挖掘/放置/Elytra 在后续版本实现（见 docs/NAVIGATION-PLAN.md）。
+
 ## Action API
 
 ```java

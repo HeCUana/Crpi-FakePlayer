@@ -75,4 +75,9 @@ public final class FakePlayerHandle {
     public com.crpi.fakeplayer.control.FakePlayerControl control() {
         return com.crpi.fakeplayer.control.ControlManager.of(this);
     }
+
+    /** The navigation engine (A* pathfinding + physics-based execution). */
+    public com.crpi.fakeplayer.navigation.NavigationManager navigation() {
+        return com.crpi.fakeplayer.navigation.NavigationRegistry.of(this);
+    }
 }
