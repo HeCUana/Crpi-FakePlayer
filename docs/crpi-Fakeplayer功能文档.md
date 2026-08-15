@@ -9,7 +9,7 @@
 
 ## 1. 安装与启用
 
-1. 将 `crpi-fakeplayer-0.1.0.jar` 放入服务器 `mods/` 目录
+1. 将 `crpi-fakeplayer-0.3.0.jar` 放入服务器 `mods/` 目录
 2. 客户端**不需要**安装任何东西
 3. 启动后输入 `/crpi-fakeplayer list`，能列出 9 条规则即加载成功
 4. 假人由 Carpet 生成：`/player <名字> spawn`
@@ -141,6 +141,25 @@ Found 3 containers.
 
 移动特性：每 tick 步进（无阻塞、无新线程）、碰撞检测（障碍 → FAIL）、卡住检测（20 tick 无位移 → FAIL）、超时 600 tick；`moveTo` 返回 `PASS`（进行中）→ `SUCCESS`（到达，误差 0.5 格）。
 
+### 3.8 导航（0.3.0 Navigation 命令）
+
+```
+/crpi fp goto <玩家> <坐标> [near <半径>]   A* 寻路前往（near = 到达半径内即可）
+/crpi fp gotoany <玩家> <坐标1> <坐标2>    任一目标可达即成功
+/crpi fp follow <玩家> <实体>              持续跟随实体（默认 2 格，目标走远自动追击）
+/crpi fp followpath <玩家> <x,z> [<x,z>...] 显式路径点执行（同高直线）
+/crpi fp navstop <玩家>                    停止导航
+/crpi fp navstatus <玩家>                  导航状态查询
+```
+
+导航特性：
+
+- **物理原生**：A* 规划路线，执行层通过 Carpet action pack 驱动假人——行走/跳跃/下落/碰撞全部原版物理，**从不瞬移**
+- **8 种移动**：平地走、上 1 格台阶（跳）、下台阶、斜向（防斜穿墙角）、2-3 格安全下落、疾跑跳跨 1-2 格缺口、挖掘软方块开路、放置方块填坑过沟
+- **预算同步 A***：节点上限 1000 / 搜索半径 128 / 20ms 预算，永不阻塞服务器；只规划已加载区块
+- **自愈**：卡住检测（40 tick）→ 自动重规划（≤3 次）；路径失效（世界变化）→ 自动重规划
+- `navstatus` 输出：`status=SUCCESS repaths=0 goal=GoalBlock{0,89,8}`（状态：IDLE/CALCULATING/RUNNING/SUCCESS/FAILED/STUCK/CANCELLED）
+
 ## 4. Action API（供其它 Mod 调用）
 
 ```java
@@ -227,6 +246,43 @@ List<ContainerInfo> nearby = ctl.getNearbyContainers(8);
 
 `ContainerInfo`：`pos / blockId / canOpen / items(List<ItemStackSnapshot>)`；`ItemStackSnapshot`：`itemId(Identifier) / count(int)`。
 
+### 4.3 Navigation API（0.3.0，完整签名）
+
+```java
+import com.crpi.fakeplayer.navigation.NavigationManager;
+import com.crpi.fakeplayer.navigation.NavigationStatus;
+import com.crpi.fakeplayer.navigation.goal.*;
+import com.crpi.fakeplayer.navigation.cost.*;
+
+NavigationManager nav = bot.navigation();   // 每假人单例，每 tick 由 NavigationRegistry 驱动
+
+// 目标
+boolean ok1 = nav.gotoBlock(pos);               // A* 到精确方块
+boolean ok2 = nav.gotoNear(pos, 3);             // 半径内
+boolean ok3 = nav.gotoAny(posA, posB);          // 任一可达
+nav.follow(entity);                             // 持续跟随（目标走远自动恢复追击）
+nav.follow(entity, 3);
+boolean ok4 = nav.followPath(List.of(p1, p2));  // 显式路径点（同高直线）
+
+// 控制
+nav.stop(); nav.pause(); nav.resume(); nav.repath();
+NavigationStatus s = nav.status();              // IDLE/CALCULATING/RUNNING/SUCCESS/FAILED/STUCK/CANCELLED
+boolean busy = nav.isNavigating();
+Goal g = nav.goal();
+Path path = nav.currentPath();
+int repaths = nav.repaths();
+
+// 配置
+nav.profile().allowBreak = ...;                 // 挖软方块开路（默认 true）
+nav.profile().allowPlace = ...;                 // 填坑过沟（默认 true）
+nav.costModel().setBlockCost(Blocks.LAVA, 100000.0);  // 危险方块代价
+nav.favoring().favor(pos, 500.0);               // 失败位置惩罚（重规划换路线）
+```
+
+移动类型：`Traverse`（走）/ `Ascend`（上台阶）/ `Descend`（下台阶）/ `Diagonal`（斜向）/ `Fall`（2-3 格安全下落）/ `Parkour`（疾跑跳 1-2 格缺口）/ `Break`（挖软方块）/ `Place`（填坑）。
+
+引擎：预算同步 A*（1000 节点/128 半径/20ms，超限返回 PARTIAL 局部最优路径）；卡住检测 40 tick + 自动重规划 ≤3 次（跟随任务不占配额）；动态路径失效检测（目标不可站 → 重规划）；CostModel 默认熔岩 10 万/火 1 千/仙人掌 500 + 3×3 危险环惩罚；只规划已加载区块。
+
 ### 4.2 控制任务机制
 
 - 移动/视角任务由 `ControlManager` 每 tick 驱动（Carpet `onTick`），无阻塞、无新线程
@@ -270,6 +326,17 @@ List<ContainerInfo> nearby = ctl.getNearbyContainers(8);
 /crpi fp userelease bot1 20              # 拉弓 1 秒满力射出
 ```
 
+### 5.5 导航演示
+
+```
+/crpi fp goto bot1 100 64 200            # A* 寻路（自动绕障碍/上台阶/跳缺口）
+/crpi fp goto bot1 100 64 200 near 3     # 到达 3 格半径内即可
+/crpi fp navstatus bot1                  # status=SUCCESS repaths=0
+/crpi fp follow bot1 bot2                # 持续跟随 bot2
+/crpi fp followpath bot1 5,0 5,5 0,5     # 显式 L 形路径
+/crpi fp navstop bot1                    # 停止
+```
+
 ---
 
 ## 6. 架构
@@ -296,6 +363,16 @@ com.crpi.fakeplayer/
 ├── mining/          MiningSession（挖掘会话状态机）+ MiningManager
 ├── itemuse/         ItemUseSession（长按使用会话状态机）
 ├── container/       ContainerContext（容器快照与校验）+ ContainerManager
+├── control/         Control API：FakePlayerControl（24 方法）+ MoveTask/LookTask + ControlManager
+├── navigation/      Navigation API：NavigationManager（目标/状态/重规划）+ NavigationRegistry（tick 驱动）
+│   ├── goal/        GoalBlock / GoalNear / GoalComposite / GoalFollow
+│   ├── path/        PathNode（安全哈希）+ Path
+│   ├── pathfinding/ AStarPathFinder（预算控制）+ BinaryHeapOpenSet + PathCalculationResult
+│   ├── movement/    Movement 接口 + 8 种实现（Traverse/Ascend/Descend/Diagonal/Fall/Parkour/Break/Place）
+│   │   └── controller/  FakePlayerMovementController（Carpet action pack 输入桥）
+│   ├── cost/        CostModel（方块代价）+ Favoring（位置惩罚）
+│   ├── world/       NavigationWorld（已加载区块约束）+ StandPositionFinder
+│   └── executor/    PathExecutor（卡住检测/路径失效检测）
 ├── command/         /crpi fp 调试命令（薄壳，只调 Action API）
 ├── config/          Carpet 规则
 └── api/             FakePlayerActions 流畅 API
@@ -303,6 +380,7 @@ com.crpi.fakeplayer/
 
 **设计原则**：
 - 所有行为走 Minecraft 原生玩家入口（`ServerPlayerEntity.attack/dropItem/closeHandledScreen`、`ServerPlayerInteractionManager`、`ScreenHandler.onSlotClick`、`onStoppedUsing/finishUsing`），不重复实现挖掘公式、伤害计算、物品逻辑
+- 导航移动走 Carpet action pack（`getActionPack().setForward` 等输入），跳跃/下落/碰撞全部原版物理，不瞬移
 - Action Executor 不直接接触 Carpet 内部实现，只通过 `FakePlayerHandle`
 - 命令只是调试薄壳：Command → Action API → Dispatcher → Executor
 
@@ -317,6 +395,7 @@ com.crpi.fakeplayer/
 3. 容器操作需先通过 USE 打开容器；`GUI_CLICK` 仅支持使用标准 `ScreenHandler` 的容器（Mod 容器一般自动兼容）
 4. 虚空世界假人会坠落死亡（测试请用普通/超平坦世界）
 5. 与 CRPI Carpet 共存时命令自动挂载到同一 `crpi` 根；两者规则互不干扰
+6. **导航限制**（0.3.0）：不支持游泳/水路；挖掘只限软方块（硬度 ≤1.5，硬方块需工具属后续版本）；`followPath` 仅同高直线 waypoints；A* 为同步计算（20ms 预算兜底，超限返回局部最优路径继续执行）；只规划已加载区块（不主动加载）
 
 ---
 
@@ -329,4 +408,5 @@ com.crpi.fakeplayer/
 | V0.3 | 容器操作：GUI_CLICK / ContainerContext / ContainerManager | ✅ 已实测 |
 | V0.4 | Stateful：USE_RELEASE / ItemUseSession | ✅ 已实测 |
 | 0.2.0 | Control API：移动 / 视角 / 状态 / 背包 / 骑乘 / 命令 / 环境感知 | ✅ 已实测 |
-| 未来 | ActionSequence、寻路（pathfind 避障）、Replay/TAS 桥接、AI、Litematica Bridge | 规划中 |
+| 0.3.0 | Navigation 系统：A* 寻路 + 8 种物理原生移动 + 目标系统 + 自愈执行器 | ✅ 已实测 |
+| 未来 | ActionSequence、游泳/水路寻路、Replay/TAS 桥接、AI、Litematica Bridge | 规划中 |

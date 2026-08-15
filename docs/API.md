@@ -16,7 +16,7 @@ dependencies {
     modImplementation "net.fabricmc.fabric-loader:${project.loader_version}"
     modImplementation "maven.modrinth:carpet:${project.carpet_version}"
     // 本地依赖：将 crpi-fakeplayer jar 加入 libs 或使用本地 maven
-    modImplementation files("libs/crpi-fakeplayer-0.1.0.jar")
+    modImplementation files("libs/crpi-fakeplayer-0.3.0.jar")
 }
 ```
 
@@ -210,8 +210,124 @@ for (ContainerInfo c : nearby) {
 - 持续任务（move/look/path）由 `ControlManager` 每 tick 驱动（Carpet `onTick`）；同一假人单任务模型，新任务自动取消旧任务
 - 移动为每 tick 位置步进 + 原版 `blocksMovement()` 碰撞检测（障碍 FAIL）、20 tick 卡住检测、600 tick 超时
 - **已知限制**：Carpet 假人不按 velocity 移动（1.21.11 实测），移动因此不走原版速度机制；`pathfindTo` 无避障
+- **注意**：Control 的 `moveTo`/`pathfindTo` 是直线工具；需要真实避障寻路请使用 §7 Navigation API
 
-## 7. 扩展自定义 Action
+## 7. Navigation API（0.3.0 新增）
+
+物理原生 A* 寻路：规划器计算路线，执行层通过 Carpet action pack 驱动假人——行走、跳跃、下落、碰撞全部是 Minecraft 原生物理，**从不瞬移**。
+
+### 7.1 入口
+
+```java
+import com.crpi.fakeplayer.navigation.NavigationManager;
+import net.minecraft.util.math.BlockPos;
+
+NavigationManager nav = bot.navigation();   // 每假人单例，由 NavigationRegistry 每 tick 驱动
+```
+
+### 7.2 完整方法签名
+
+| 方法 | 返回 | 说明 |
+|---|---|---|
+| `gotoBlock(BlockPos)` | `boolean` | A* 导航到方块；`true`=已开始（RUNNING 或已到达 SUCCESS），`false`=无路径（FAILED） |
+| `gotoNear(BlockPos, int radius)` | `boolean` | 到达半径内即成功（GoalNear） |
+| `gotoAny(BlockPos... targets)` | `boolean` | 任一目标可达即成功（GoalComposite ANY_OF） |
+| `follow(Entity)` / `follow(Entity, int distance)` | `void` | **持续跟随**实体（默认 2 格）；目标走远自动恢复追击，目标死亡 → FAILED |
+| `followPath(List<BlockPos>)` | `boolean` | 显式路径点执行（同高直线，无 A*） |
+| `stop()` | `void` | 停止（CANCELLED）并释放输入 |
+| `pause()` / `resume()` | `void` | 暂停（停止输入）/ 从当前目标重规划恢复 |
+| `repath()` | `boolean` | 手动重规划（有 20 tick 冷却，超 3 次 FAILED；跟随任务不占配额） |
+| `status()` | `NavigationStatus` | `IDLE / CALCULATING / RUNNING / SUCCESS / FAILED / STUCK / CANCELLED` |
+| `isNavigating()` / `isFinished()` | `boolean` | 进行中 / 已终态 |
+| `goal()` / `currentPath()` | `Goal` / `Path` | 当前目标 / 正在执行的路径（可能为 null） |
+| `repaths()` | `int` | 已重规划次数 |
+| `profile()` / `setProfile(NavigationProfile)` | — | 行为开关配置 |
+| `costModel()` | `CostModel` | 方块代价模型（危险/地形惩罚） |
+| `favoring()` | `Favoring` | 位置代价调整（失败位置惩罚） |
+
+### 7.3 目标（Goal）
+
+```java
+new GoalBlock(pos);              // 精确方块
+new GoalNear(pos, radius);       // 半径内
+new GoalComposite(               // 组合
+    GoalComposite.Mode.ANY_OF,   // 任一满足（或 ALL_OF 全部满足）
+    goalA, goalB);
+new GoalFollow(entity, 2);       // 跟随实体（持续）
+```
+
+### 7.4 配置
+
+```java
+NavigationProfile p = nav.profile();
+p.allowBreak;          // true  — 允许挖软方块开路（硬度 ≤1.5）
+p.allowPlace;          // true  — 允许放置方块填坑过沟
+p.allowParkour;        // true  — 允许疾跑跳跨 1-2 格缺口
+p.allowSprint;         // true
+p.allowSwim;           // false — 水路未实现
+p.maxFallDistance;     // 3     — 安全下落上限（格）
+p.maxSearchRadius;     // 128
+p.maxCalculationBudgetNanos;  // 20_000_000（20ms 预算）
+
+nav.costModel().setBlockCost(Blocks.LAVA, 100000.0);   // 自定义危险代价
+nav.favoring().favor(pos, 500.0);                      // 避开某位置
+nav.favoring().clear();
+```
+
+### 7.5 支持的移动类型（8 种）
+
+| Movement | 说明 |
+|---|---|
+| `MovementTraverse` | 平地 1 格走（action pack forward） |
+| `MovementAscend` | 上 1 格台阶（原生跳跃） |
+| `MovementDescend` | 下 1 格台阶 |
+| `MovementDiagonal` | 斜向（**防斜穿墙角**：两个相邻直向位置必须可通行） |
+| `MovementFall` | 2-3 格安全下落（下落通道逐层校验；超过 maxFallDistance 绝不规划） |
+| `MovementParkour` | 疾跑跳跨 1-2 格缺口（缺口脚下悬空、两侧同高） |
+| `MovementBreak` | 挖掘软方块开路（复用 vanilla MiningSession：原生速度/工具/掉落） |
+| `MovementPlace` | 背包方块填坑后走过（setBlockState + 背包扣 1） |
+
+### 7.6 引擎行为
+
+- **预算同步 A***：节点上限 1000 / 搜索半径 128 / 20ms 时间预算；超出返回 PARTIAL（最优局部路径）继续执行并重规划，**永不阻塞服务器**
+- **只规划已加载区块**（不主动加载区块）
+- **自愈**：卡住检测（40 tick 无位移）→ 位置惩罚 + 自动重规划（≤3 次）；世界变化使当前路径失效（目标不可站）→ 自动重规划
+- **代价系统**：`CostModel`（默认熔岩 10 万/火 1 千/仙人掌 500 + 周围 3×3 危险环惩罚）+ `Favoring`（失败位置 +1000/+500，重规划换路线）
+- 同一假人导航与 Control 任务相互独立；建议不要同时驱动
+
+### 7.7 示例
+
+```java
+NavigationManager nav = bot.navigation();
+
+// 走到箱子旁边
+nav.gotoBlock(new BlockPos(100, 64, 200));
+while (nav.isNavigating()) { /* 等待 tick */ }
+System.out.println(nav.status());           // SUCCESS
+
+// 半径 3 内即可
+nav.gotoNear(chestPos, 3);
+
+// 跟随另一个假人，直到目标下线
+nav.follow(otherPlayer, 2);
+
+// 显式路径（同高直线 waypoints）
+nav.followPath(List.of(new BlockPos(100, 64, 200), new BlockPos(105, 64, 200)));
+
+// 查询
+nav.goal(); nav.currentPath(); nav.repaths(); nav.status();
+```
+
+### 7.8 与 Control API 的区别
+
+| | Control API（0.2.0） | Navigation API（0.3.0） |
+|---|---|---|
+| 定位 | 直线移动/视角/背包/命令等通用控制 | A* 寻路 + 路径执行 |
+| 移动方式 | 每 tick 位置步进 + 碰撞检测 | **Carpet action pack 原生物理**（跳/落/碰撞全原生） |
+| 避障 | 无（障碍直接 FAIL） | A* 自动绕行 + 挖掘/放置开路 |
+| 适用 | 短距离直线、工具型操作 | 中长距离真实寻路、跟随 |
+
+## 8. 扩展自定义 Action
 
 ```java
 // 1. 定义动作
@@ -247,7 +363,7 @@ CRPIFakePlayerMod.dispatcher().register(ActionType.USE_ITEM, new MyExecutor());
 
 注意：`ActionType` 为固定枚举，自定义逻辑复用现有类型并注册覆盖执行器（会替换该类型的默认执行器），或用独立分支判断。**不推荐**通过 Mixin 修改枚举。
 
-## 8. FakePlayerHandle 可用能力
+## 9. FakePlayerHandle 可用能力
 
 ```java
 player()                 // ServerPlayerEntity（原生实体）
@@ -259,9 +375,11 @@ gameMode()               // GameMode
 x()/y()/z()              // 坐标
 yaw()/pitch()            // 朝向
 isOnline()               // 未移除
+control()                // Control API（§6）
+navigation()             // Navigation API（§7）
 ```
 
-## 9. Carpet 规则联动
+## 10. Carpet 规则联动
 
 | 规则 | 影响 |
 |---|---|
@@ -271,7 +389,7 @@ isOnline()               // 未移除
 
 规则运行时可改（`/crpi-fakeplayer <规则> <值>`），无需重启。
 
-## 10. 线程与安全约束
+## 11. 线程与安全约束
 
 - **所有 API 只能在服务器主线程调用**（命令、ServerTick 事件、其它服务端逻辑内）。不要在异步线程调用（会抛 `Attempted to run on a non-existent server thread` 或世界状态不一致）
 - 动作校验内置：目标存活/同世界/距离/区块已加载/规则开关
