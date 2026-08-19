@@ -77,6 +77,9 @@ public final class FakePlayerActions {
      * Synchronous and read-only: no GUI is opened, no chunk is loaded.
      */
     public java.util.List<com.crpi.fakeplayer.container.ContainerScanResult> scanContainers(int radius) {
+        if (radius <= 0) {
+            return java.util.List.of();
+        }
         int clamped = Math.min(radius, com.crpi.fakeplayer.config.CRPIFakePlayerSettings.maxContainerScanRadius);
         return com.crpi.fakeplayer.container.ContainerScanner.scan(this.handle, clamped);
     }

@@ -13,7 +13,8 @@ public enum ActionResult {
     INVALID_TARGET,
     OUT_OF_RANGE,
     NO_PERMISSION,
-    INVALID_STATE;
+    INVALID_STATE,
+    CONCURRENCY_LIMIT;
 
     public boolean isSuccess() {
         return this == SUCCESS;

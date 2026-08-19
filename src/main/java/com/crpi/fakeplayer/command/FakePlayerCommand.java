@@ -20,6 +20,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.LiteralCommandNode;
+import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.crpi.fakeplayer.container.ContainerContext;
 import com.crpi.fakeplayer.container.ContainerManager;
 import com.crpi.fakeplayer.container.ContainerScanResult;
@@ -50,6 +51,9 @@ import net.minecraft.util.math.Direction;
 public final class FakePlayerCommand {
     private static final Predicate<ServerCommandSource> OP =
         source -> CommandManager.ADMINS_CHECK.allows(source.getPermissions());
+
+    private static final SimpleCommandExceptionType INVALID_FACE =
+        new SimpleCommandExceptionType(Text.literal("Invalid face: expected up, down, north, south, east or west"));
 
     private FakePlayerCommand() {
     }
@@ -629,12 +633,9 @@ public final class FakePlayerCommand {
         return 1;
     }
 
-    private static Direction face(CommandContext<ServerCommandSource> ctx) {
-        try {
-            return direction(ctx, "face");
-        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
-            return Direction.UP;
-        }
+    private static Direction face(CommandContext<ServerCommandSource> ctx)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        return direction(ctx, "face");
     }
 
     private static int interact(CommandContext<ServerCommandSource> ctx, Hand hand) {
@@ -656,12 +657,13 @@ public final class FakePlayerCommand {
 
     private static Direction direction(CommandContext<ServerCommandSource> ctx, String arg) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         return switch (StringArgumentType.getString(ctx, arg)) {
+            case "up" -> Direction.UP;
             case "down" -> Direction.DOWN;
             case "north" -> Direction.NORTH;
             case "south" -> Direction.SOUTH;
             case "east" -> Direction.EAST;
             case "west" -> Direction.WEST;
-            default -> Direction.UP;
+            default -> throw INVALID_FACE.create();
         };
     }
 }

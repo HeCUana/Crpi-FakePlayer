@@ -372,6 +372,9 @@ public final class FakePlayerControl {
 
     /** Environment: read-only container scan around the fake player. */
     public List<ContainerInfo> getNearbyContainers(double radius) {
+        if (radius <= 0) {
+            return List.of();
+        }
         int clamped = (int) Math.min(radius, com.crpi.fakeplayer.config.CRPIFakePlayerSettings.maxContainerScanRadius);
         List<ContainerScanResult> results = ContainerScanner.scan(handle, clamped);
         List<ContainerInfo> info = new ArrayList<>(results.size());

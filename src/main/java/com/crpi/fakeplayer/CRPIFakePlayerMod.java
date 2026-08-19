@@ -22,7 +22,7 @@ import net.minecraft.server.command.ServerCommandSource;
  */
 public class CRPIFakePlayerMod implements ModInitializer, CarpetExtension {
     public static final String MOD_ID = "crpi-fakeplayer";
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.3.1";
 
     private static final SettingsManager SETTINGS_MANAGER =
         new SettingsManager(VERSION, MOD_ID, "CRPI-FakePlayer");
@@ -71,6 +71,9 @@ public class CRPIFakePlayerMod implements ModInitializer, CarpetExtension {
 
     @Override
     public void onTick(MinecraftServer server) {
+        // Drop per-bot state for any fake player that has logged off, before
+        // advancing behaviour this tick (prevents touching removed entities).
+        com.crpi.fakeplayer.fakeplayer.FakePlayerRegistry.tick(server, SCHEDULER);
         SCHEDULER.tick(server);
         com.crpi.fakeplayer.control.ControlManager.tick(server);
         com.crpi.fakeplayer.navigation.NavigationRegistry.tick(server);

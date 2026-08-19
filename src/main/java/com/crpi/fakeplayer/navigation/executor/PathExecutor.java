@@ -33,6 +33,9 @@ public final class PathExecutor {
     }
 
     public void start(Path newPath) {
+        // release any in-flight movement's resources (e.g. a mining session)
+        // before replacing the route
+        stop();
         this.path = newPath;
         this.lastX = this.handle.x();
         this.lastY = this.handle.y();
@@ -102,6 +105,12 @@ public final class PathExecutor {
     }
 
     public void stop() {
+        if (this.path != null) {
+            Movement current = this.path.currentMovement();
+            if (current != null) {
+                current.stop();
+            }
+        }
         this.controller.stop();
         this.path = null;
     }

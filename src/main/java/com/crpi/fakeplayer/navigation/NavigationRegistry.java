@@ -31,4 +31,12 @@ public final class NavigationRegistry {
             entry.getValue().tick();
         }
     }
+
+    /** Stops and drops the manager for a departing bot (memory-leak guard). */
+    public static void stop(UUID uuid) {
+        NavigationManager manager = MANAGERS.remove(uuid);
+        if (manager != null) {
+            manager.stop();
+        }
+    }
 }

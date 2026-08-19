@@ -23,6 +23,10 @@ public final class BinaryHeapOpenSet {
         } else if (node.gCost() < existing.gCost()) {
             existing.parent(node.parent());
             existing.cameFromMovement(node.cameFromMovement());
+            // the heap orders by fCost: update the key too, or the node sits at
+            // the wrong position and expanded neighbours carry inflated costs
+            existing.gCost(node.gCost());
+            existing.fCost(node.fCost());
             this.heap.remove(existing);
             this.heap.add(existing);
         }

@@ -11,13 +11,13 @@
 
 1. 将 `crpi-fakeplayer-0.3.0.jar` 放入服务器 `mods/` 目录
 2. 客户端**不需要**安装任何东西
-3. 启动后输入 `/crpi-fakeplayer list`，能列出 9 条规则即加载成功
+3. 启动后输入 `/crpi-fakeplayer`，能列出 10 条规则即加载成功
 4. 假人由 Carpet 生成：`/player <名字> spawn`
 5. 扩展规则通过 `/crpi-fakeplayer <规则名> <值>` 设置
 
 ---
 
-## 2. Carpet 规则一览（9 条）
+## 2. Carpet 规则一览（10 条）
 
 | 规则 | 默认 | 说明 |
 |---|---|---|
@@ -29,7 +29,7 @@
 | `fakePlayerContainer` | `true` | GUI_CLICK 等容器操作开关 |
 | `fakePlayerDebug` | `false` | 开启后输出每个 Action 的详细日志（玩家/动作/状态/结果） |
 | `maxQueueLength` | `64` | 每个假人的 Action 队列最大长度 |
-| `maxConcurrentActions` | `16` | 同时运行中的 Stateful Action 数量上限 |
+| `maxConcurrentActions` | `16` | 每个假人同时运行中的 Stateful Action 数量上限（超出返回 `CONCURRENCY_LIMIT`） |
 | `maxContainerScanRadius` | `16` | 容器扫描命令允许的最大半径（防卡顿） |
 
 ---
@@ -180,15 +180,24 @@ ActionResult r2 = FakePlayerActions.of(bot).dig(pos, Direction.UP).execute();
 // 右键方块（开箱/放置/按钮）
 ActionResult r3 = FakePlayerActions.of(bot).use(pos, Direction.UP).execute();
 
-// 使用物品 / 长按释放（弓 20 tick 满力）
+// 使用物品
 ActionResult r4 = FakePlayerActions.of(bot).useItem(Hand.MAIN_HAND).execute();
-ActionResult r5 = FakePlayerActions.of(bot).useRelease(Hand.MAIN_HAND, 20).execute();
 
 // 与实体交互
 ActionResult r6 = FakePlayerActions.of(bot).interact(villager, Hand.MAIN_HAND).execute();
+```
 
-// 容器槽位点击（PICKUP slot 0 → 玩家背包）
-ActionResult r7 = FakePlayerActions.of(bot).clickSlot(0, 0, SlotActionType.PICKUP).execute();
+> ⚠️ 流畅门面 `FakePlayerActions` **尚未提供** `useRelease()` / `clickSlot()` 便捷方法（文档早期版本误标为已有）。USE_RELEASE 与 GUI_CLICK 需要直接构造动作对象并通过共享调度器执行：
+
+```java
+// 长按释放（弓 20 tick 满力）——直接构造 UseReleaseAction
+long tick = bot.world().getServer().getTicks();
+ActionResult r5 = CRPIFakePlayerMod.scheduler().runNow(
+    new UseReleaseAction(bot, tick, Hand.MAIN_HAND, 20));
+
+// 容器槽位点击（PICKUP slot 0 → 玩家背包）——直接构造 GuiClickAction
+ActionResult r7 = CRPIFakePlayerMod.scheduler().runNow(
+    new GuiClickAction(bot, tick, 0, 0, SlotActionType.PICKUP));
 
 // 关容器 / 丢物品
 ActionResult r8 = FakePlayerActions.of(bot).closeGui().execute();
@@ -396,6 +405,19 @@ com.crpi.fakeplayer/
 4. 虚空世界假人会坠落死亡（测试请用普通/超平坦世界）
 5. 与 CRPI Carpet 共存时命令自动挂载到同一 `crpi` 根；两者规则互不干扰
 6. **导航限制**（0.3.0）：不支持游泳/水路；挖掘只限软方块（硬度 ≤1.5，硬方块需工具属后续版本）；`followPath` 仅同高直线 waypoints；A* 为同步计算（20ms 预算兜底，超限返回局部最优路径继续执行）；只规划已加载区块（不主动加载）
+7. **内存泄漏**（✅ 已修复）：
+   - ~~假人下线时 `ActionScheduler.queues`（每假人队列）与 `FakePlayerRegistry.HANDLES` 不会被清理~~。现在 `FakePlayerRegistry.tick` 每 server tick 扫描 `HANDLES`（所有被 `resolve` 触达过的假人的超集），对已下线/被移除的假人统一调用 `ActionScheduler.releasePlayer`，一次性清理队列、运行中的 Stateful Action、缓存句柄、`MiningManager` session、Control 任务与 Navigation 状态，`ServerPlayerEntity` 得以被 GC
+   - ~~`DIG` 挖完每方块残留 session~~。`DigExecutor.tick` 的终止态（SUCCESS/FAILED/CANCELLED）分支与 `cancel()` 现在都调用 `MiningManager.finish`，`SESSIONS` 不再残块
+8. **`maxConcurrentActions` 已强制生效**：`ActionScheduler.start` 在进入 Stateful/RETRY 路径前校验每假人的 `ActionQueue.runningCount`，达到上限即返回新结果 `ActionResult.CONCURRENCY_LIMIT`（默认每假人 ≤16 并发）。`runningCount` 现在是活的计数（`beginRunning`/`endRunning` 维护）；废弃的 `queuedTicks` 字段已删除
+9. **`FakePlayerActions` 门面缺 `useRelease()` / `clickSlot()`**：见第 4 节说明，示例只能用直接构造方式调用
+10. **导航内部小的已知点**：
+    - ✅ 已修复：~~`BinaryHeapOpenSet.add` 重开节点时不更新 `gCost/fCost`~~。现在同时更新父链与 `gCost/fCost`，堆不再按过期 fCost 排序
+    - `isCurrentMovementBlocked()` 对 `MovementBreak` 会误判（目标方块未挖前 `canStandAt` 为 false），每次导航会话触发一次多余重规划并被 `invalidated` 锁存
+    - `GoalComposite.ALL_OF` 要求单点同时满足所有子目标，实际几乎不可用
+
+对导航挖掘（0.3.0）的修复：
+- ✅ 导航中止（`stop`/`pause`/`repath`/`follow`/bot 下线）现在会释放进行中的 `MiningSession`（发 `ABORT_DESTROY_BLOCK`），不再残留静态表条目、不再卡住原生 interaction manager——`Movement.stop()` 挂接进 `PathExecutor.start/stop`
+- ✅ `MovementBreak` 对不可挖方块不再每 tick 无限重挖：FAILED 后置 `failed` 标记，交由外层卡住/重规划兜底
 
 ---
 

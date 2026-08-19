@@ -16,13 +16,15 @@ public final class MovementParkour implements Movement {
     private final int dx;
     private final int dz;
     private final int span;
+    private final boolean sprint;
 
-    public MovementParkour(PathNode source, PathNode target, int dx, int dz, int span) {
+    public MovementParkour(PathNode source, PathNode target, int dx, int dz, int span, boolean sprint) {
         this.source = source;
         this.target = target;
         this.dx = dx;
         this.dz = dz;
         this.span = span;
+        this.sprint = sprint;
     }
 
     @Override
@@ -39,7 +41,7 @@ public final class MovementParkour implements Movement {
     public void apply(FakePlayerHandle handle, FakePlayerMovementController controller, NavigationWorld world, long tick) {
         controller.lookToward(this.target.x() + 0.5, this.target.z() + 0.5);
         controller.forward(true);
-        controller.sprint(true);
+        controller.sprint(this.sprint);
         controller.jump(handle.player().isOnGround());
     }
 

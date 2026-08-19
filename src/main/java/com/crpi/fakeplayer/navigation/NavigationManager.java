@@ -171,8 +171,9 @@ public final class NavigationManager {
     }
 
     public void pause() {
-        if (this.status == NavigationStatus.RUNNING) {
-            this.controller.stop();
+        // release the in-flight movement's resources (e.g. mining session) too
+        this.executor.stop();
+        if (this.status == NavigationStatus.RUNNING || this.status == NavigationStatus.CALCULATING) {
             this.status = NavigationStatus.CANCELLED;
         }
     }

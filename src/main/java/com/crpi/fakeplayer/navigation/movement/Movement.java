@@ -27,6 +27,14 @@ public interface Movement {
     /** Whether the player has reached the movement target. */
     boolean isComplete(FakePlayerHandle handle, NavigationWorld world);
 
+    /**
+     * Called when the path is abandoned before this movement completes
+     * (repath / stop / follow). A no-op unless the movement holds external
+     * resources (e.g. a mining session) that must be released.
+     */
+    default void stop() {
+    }
+
     /** Describes the movement (for debug output). */
     String description();
 }

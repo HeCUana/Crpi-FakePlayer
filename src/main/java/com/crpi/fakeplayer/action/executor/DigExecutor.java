@@ -75,6 +75,11 @@ public final class DigExecutor implements ActionExecutor<DigAction> {
                 // still RUNNING
             }
         }
+        // Drop the finished session so it isn't retained per mined block.
+        // (MiningManager.finish removes the map entry; no-op if already gone.)
+        if (action.state().isTerminal()) {
+            MiningManager.finish(handle.player().getUuid());
+        }
     }
 
     @Override
@@ -82,6 +87,7 @@ public final class DigExecutor implements ActionExecutor<DigAction> {
         if (action.session() != null) {
             action.session().cancel();
         }
+        MiningManager.finish(handle.player().getUuid());
         action.state(ActionState.CANCELLED);
     }
 }

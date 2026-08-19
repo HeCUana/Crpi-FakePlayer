@@ -5,8 +5,11 @@ import com.crpi.fakeplayer.action.ActionDispatcher;
 import com.crpi.fakeplayer.action.ActionResult;
 import com.crpi.fakeplayer.action.ActionState;
 import com.crpi.fakeplayer.config.CRPIFakePlayerSettings;
+import com.crpi.fakeplayer.control.ControlManager;
 import com.crpi.fakeplayer.fakeplayer.FakePlayerHandle;
 import com.crpi.fakeplayer.fakeplayer.FakePlayerRegistry;
+import com.crpi.fakeplayer.mining.MiningManager;
+import com.crpi.fakeplayer.navigation.NavigationRegistry;
 import com.crpi.fakeplayer.action.ActionExecutor;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,9 +45,33 @@ public final class ActionScheduler {
         return this.queues.computeIfAbsent(handle.player().getUuid(), id -> new ActionQueue(handle));
     }
 
+    /**
+     * Drops every piece of per-player state for a bot that disconnected or was
+     * removed: its queue, any still-running stateful actions, the cached
+     * handle, mining sessions, control tasks and navigation. Prevents the
+     * {@link ServerPlayerEntity} from being pinned in memory by cached state.
+     */
     public void releasePlayer(UUID uuid) {
-        this.queues.remove(uuid);
+        ActionQueue queue = this.queues.remove(uuid);
+        if (queue != null) {
+            queue.clear();
+        }
+        // Cancel and drop any stateful actions of this bot still being driven.
+        for (int i = this.running.size() - 1; i >= 0; i--) {
+            Action action = this.running.get(i);
+            if (!action.handle().player().getUuid().equals(uuid)) {
+                continue;
+            }
+            ActionExecutor<Action> executor = this.dispatcher.executorFor(action.type());
+            if (executor != null) {
+                executor.cancel(action, action.handle());
+            }
+            retire(i);
+        }
         FakePlayerRegistry.release(uuid);
+        MiningManager.finish(uuid);
+        ControlManager.release(uuid);
+        NavigationRegistry.stop(uuid);
     }
 
     public void tick(MinecraftServer server) {
@@ -61,11 +89,12 @@ public final class ActionScheduler {
             ActionExecutor<Action> executor = this.dispatcher.executorFor(action.type());
             if (executor == null) {
                 finish(action, ActionResult.INVALID_STATE);
+                retire(i);
                 continue;
             }
             executor.tick(action, action.handle());
             if (action.state().isTerminal()) {
-                this.running.remove(i);
+                retire(i);
             }
         }
     }
@@ -77,6 +106,12 @@ public final class ActionScheduler {
     }
 
     private void start(Action action) {
+        // master kill-switch: every action (attack/drop/dig/use/gui-click/...)
+        // is disabled when the rule is off
+        if (!CRPIFakePlayerSettings.fakePlayerActions) {
+            finish(action, ActionResult.NO_PERMISSION);
+            return;
+        }
         if (!action.handle().isOnline()) {
             finish(action, ActionResult.INVALID_TARGET);
             return;
@@ -89,11 +124,29 @@ public final class ActionScheduler {
         action.state(ActionState.STARTED);
         ActionResult result = executor.execute(action, action.handle());
         if (result == ActionResult.RETRY) {
+            // Enforce the per-bot concurrent-stateful-action cap.
+            ActionQueue queue = queueOf(action.handle());
+            if (queue.runningCount() >= CRPIFakePlayerSettings.maxConcurrentActions) {
+                executor.cancel(action, action.handle());
+                finish(action, ActionResult.CONCURRENCY_LIMIT);
+                return;
+            }
+            queue.beginRunning();
             action.state(ActionState.RUNNING);
             this.running.add(action);
             return;
         }
         finish(action, result);
+    }
+
+    /** Removes a running action and decrements its bot's running counter. */
+    private void retire(int index) {
+        Action action = this.running.get(index);
+        this.running.remove(index);
+        ActionQueue queue = this.queues.get(action.handle().player().getUuid());
+        if (queue != null) {
+            queue.endRunning();
+        }
     }
 
     private void finish(Action action, ActionResult result) {

@@ -17,7 +17,6 @@ public final class ActionQueue {
     private final FakePlayerHandle handle;
     private final Deque<Action> queue = new ArrayDeque<>();
     private int runningCount;
-    private long queuedTicks;
 
     public ActionQueue(FakePlayerHandle handle) {
         this.handle = handle;
@@ -31,6 +30,23 @@ public final class ActionQueue {
         return this.queue.size();
     }
 
+    /** Number of this bot's stateful actions currently being driven by the scheduler. */
+    public int runningCount() {
+        return this.runningCount;
+    }
+
+    /** Marks one of this bot's stateful actions as running. */
+    void beginRunning() {
+        this.runningCount++;
+    }
+
+    /** Marks one of this bot's stateful actions as finished. */
+    void endRunning() {
+        if (this.runningCount > 0) {
+            this.runningCount--;
+        }
+    }
+
     /** Returns the action that should run now, or {@code null}. */
     public Action pollReady(long currentTick) {
         if (this.queue.isEmpty()) {
@@ -41,7 +57,6 @@ public final class ActionQueue {
             return null;
         }
         this.queue.poll();
-        this.queuedTicks = 0;
         return head;
     }
 
@@ -50,7 +65,6 @@ public final class ActionQueue {
             return false;
         }
         this.queue.offer(action);
-        this.queuedTicks = 0;
         return true;
     }
 

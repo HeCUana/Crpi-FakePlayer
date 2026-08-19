@@ -12,6 +12,7 @@ import java.util.List;
 public final class MovementProvider {
     private static final int[][] TRAVERSE = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
     private static final int[][] DIAGONALS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+    /** Absolute safety ceiling for a drop; the profile may set less, never more. */
     private static final int MAX_FALL_DISTANCE = 3;
 
     public List<Movement> generate(NavigationWorld world, PathNode from) {
@@ -96,6 +97,9 @@ public final class MovementProvider {
     }
 
     private void addParkour(NavigationWorld world, PathNode from, int dx, int dz, int span, List<Movement> out) {
+        if (!world.profile().allowParkour) {
+            return;
+        }
         int x = from.x() + dx * span;
         int z = from.z() + dz * span;
         if (!targetLoaded(world, x, z)) {
@@ -125,7 +129,8 @@ public final class MovementProvider {
         if (!world.isSolid(new net.minecraft.util.math.BlockPos(from.x(), from.y() - 1, from.z()))) {
             return;
         }
-        out.add(new MovementParkour(from, new PathNode(x, from.y(), z, 0, 0, null, null), dx, dz, span));
+        out.add(new MovementParkour(from, new PathNode(x, from.y(), z, 0, 0, null, null), dx, dz, span,
+            world.profile().allowSprint));
     }
 
     private boolean targetLoaded(NavigationWorld world, int x, int z) {
@@ -182,7 +187,10 @@ public final class MovementProvider {
         if (!targetLoaded(world, x, z)) {
             return;
         }
-        for (int drop = 2; drop <= MAX_FALL_DISTANCE; drop++) {
+        // honour the profile's max fall distance, but never plan a drop deeper
+        // than the engine's hard safety ceiling
+        int maxFall = Math.min(world.profile().maxFallDistance, MAX_FALL_DISTANCE);
+        for (int drop = 2; drop <= maxFall; drop++) {
             int y = from.y() - drop;
             net.minecraft.util.math.BlockPos feet = new net.minecraft.util.math.BlockPos(x, y, z);
             // target standable and every level of the fall shaft passable
