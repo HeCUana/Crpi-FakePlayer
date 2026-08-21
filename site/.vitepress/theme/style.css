@@ -1,0 +1,80 @@
+/**
+ * CRPI-FakePlayer VitePress Theme
+ * Minecraft-inspired color palette
+ */
+
+:root {
+  /* Brand colors - Minecraft grass green */
+  --vp-c-brand-1: #5a8f3c;
+  --vp-c-brand-2: #4a7a30;
+  --vp-c-brand-3: #3d6627;
+  --vp-c-brand-soft: rgba(90, 143, 60, 0.14);
+
+  /* Home hero gradient */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: -webkit-linear-gradient(120deg, #5a8f3c 30%, #8bc34a);
+
+  --vp-home-hero-image-background-image: linear-gradient(
+    -45deg,
+    #5a8f3c50 50%,
+    #8bc34a30 50%
+  );
+  --vp-home-hero-image-filter: blur(44px);
+}
+
+.dark {
+  --vp-c-brand-1: #8bc34a;
+  --vp-c-brand-2: #7cb342;
+  --vp-c-brand-3: #689f38;
+  --vp-c-brand-soft: rgba(139, 195, 74, 0.14);
+}
+
+/* Code blocks - stone-like background */
+.dark .vp-code-group .tabs label {
+  font-weight: 500;
+}
+
+/* Custom container styles */
+.custom-block.tip {
+  border-color: var(--vp-c-brand-1);
+}
+
+/* Minecraft-style code annotations */
+.custom-block.info {
+  background-color: var(--vp-custom-block-info-bg);
+}
+
+/* API method badges */
+.api-method {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 600;
+  font-family: var(--vp-font-family-mono);
+}
+
+.api-method.get {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.dark .api-method.get {
+  background: #1b5e20;
+  color: #a5d6a7;
+}
+
+/* Table improvements */
+.vp-doc table {
+  width: 100%;
+}
+
+.vp-doc th {
+  white-space: nowrap;
+}
+
+/* Responsive logo */
+.VPNavBarTitle .logo {
+  width: 28px;
+  height: 28px;
+}
